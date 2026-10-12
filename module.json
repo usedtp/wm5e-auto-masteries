@@ -1,0 +1,47 @@
+{
+  "id": "wm5e-auto-masteries",
+  "title": "WM5E Auto Masteries",
+  "description": "Helper for Automated Masteries 5e. Sets each weapon's 2024 PHB mastery and base item as it is created, links the mastery rule in the weapon description, and grants player characters the matching mastery keys. One-time sweep for existing actors. Lets the GM turn Automated Masteries 5e auto-triggering on or off for every user.",
+  "version": "2.1.0",
+  "url": "https://github.com/usedtp/wm5e-auto-masteries",
+  "manifest": "https://github.com/usedtp/wm5e-auto-masteries/releases/latest/download/module.json",
+  "download": "https://github.com/usedtp/wm5e-auto-masteries/releases/download/2.1.0/module.zip",
+  "authors": [
+    {
+      "name": "Mick Kitor"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14.367",
+    "verified": "14.369"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "6.0.0",
+          "verified": "6.0.6"
+        }
+      }
+    ],
+    "recommends": [
+      {
+        "id": "wm5e",
+        "type": "module",
+        "reason": "Automates the mastery effects this module sets up."
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ]
+}
