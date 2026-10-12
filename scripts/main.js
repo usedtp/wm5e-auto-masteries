@@ -1,4 +1,5 @@
-// WM5E Auto Masteries 2.1.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.2.0 for dnd5e 6.0.x on Foundry v14.
+// 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
 // Design for low load: no compendium document loads, no render hooks,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
 
@@ -34,7 +35,7 @@ const TEXT = {
 };
 
 // Settings cached in memory; read once at ready and on change.
-const cfg = { desc: true, infer: true, grant: true, link: true };
+const cfg = { desc: true, infer: true, warn: true, link: true };
 
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -86,6 +87,35 @@ function planItem(src) {
   return { changes: null, base, mastery, weapon: true };
 }
 
+
+// 2024 PHB Weapon Mastery counts by class level (matches dnd5e 6.0.6 class advancements).
+const CLASS_CAP = {
+  barbarian: l => (l >= 10 ? 4 : l >= 4 ? 3 : 2),
+  fighter: l => (l >= 16 ? 6 : l >= 10 ? 5 : l >= 4 ? 4 : 3),
+  paladin: () => 2, ranger: () => 2, rogue: () => 2
+};
+
+// Highest single class (features of the same name don't stack) + 1 per Weapon Master feat.
+function masteryCap(actor) {
+  if (actor?.type !== "character") return 0;
+  let best = 0;
+  for (const [id, cls] of Object.entries(actor.classes ?? {})) best = Math.max(best, CLASS_CAP[id]?.(cls.system?.levels ?? 0) ?? 0);
+  const feats = actor.items.filter(i => i.type === "feat" && i.name.trim().toLowerCase() === "weapon master").length;
+  return best + feats;
+}
+
+// Masteries the player picked through dnd5e level-up (stored on the class item).
+function levelUpPicks(actor) {
+  const picks = [];
+  for (const cls of Object.values(actor.classes ?? {})) {
+    for (const adv of cls.advancement?.byType?.Trait ?? []) {
+      if (adv.configuration?.mode !== "mastery") continue;
+      for (const k of adv.value?.chosen ?? []) picks.push(String(k).split(":").pop());
+    }
+  }
+  return [...new Set(picks)];
+}
+
 const sourceKeys = actor => actor._source?.system?.traits?.weaponProf?.mastery?.value ?? [];
 
 // New world or sidebar weapon: fix data before it is written. No extra database write.
@@ -95,69 +125,108 @@ function onPreCreateItem(item, data, options) {
   if (changes) item.updateSource(foundry.utils.expandObject(changes));
 }
 
-// New actor with weapons already on it (compendium drag, import, duplicate): fix all in one pass.
+// New actor with weapons already on it (compendium drag, import, duplicate): fix weapon data in one pass.
 function onPreCreateActor(actor, data, options) {
   if (options.pack) return;
   const items = actor._source.items ?? [];
-  const grant = cfg.grant && actor.type === "character";
-  const keys = new Set(sourceKeys(actor));
-  const before = keys.size;
   let touched = false;
   const next = items.map(src => {
     if (src.type !== "weapon") return src;
     const p = planItem(src);
-    if (grant && p.mastery && p.base) keys.add(p.base);
     if (!p.changes) return src;
     touched = true;
     return foundry.utils.mergeObject(foundry.utils.deepClone(src), foundry.utils.expandObject(p.changes));
   });
-  const upd = {};
-  if (touched) upd.items = next;
-  if (keys.size !== before) upd.system = { traits: { weaponProf: { mastery: { value: [...keys] } } } };
-  if (touched || keys.size !== before) actor.updateSource(upd);
+  if (touched) actor.updateSource({ items: next });
 }
 
-// Weapon added to a character: grant its mastery key. Batched per actor, one update.
-const pending = new Map();
-const flushKeys = foundry.utils.debounce(async () => {
-  const jobs = [...pending];
-  pending.clear();
-  for (const [actor, add] of jobs) {
-    const keys = new Set(sourceKeys(actor));
-    const before = keys.size;
-    for (const k of add) keys.add(k);
-    if (keys.size !== before) await actor.update({ "system.traits.weaponProf.mastery.value": [...keys] });
+// Over-cap warning: tell the GM when a character knows more weapon masteries than the PHB allows.
+// Warns only; never changes data (level-up can update levels and picks in separate writes).
+const KEY_PATH = "system.traits.weaponProf.mastery.value";
+function overCap(actor) {
+  if (actor?.type !== "character") return null;
+  const known = sourceKeys(actor);
+  const cap = masteryCap(actor);
+  return known.length > cap ? { known: known.length, cap } : null;
+}
+const warned = new Map();
+function warnIfOverCap(actor) {
+  if (!cfg.warn || !game.users.activeGM?.isSelf) return;
+  const o = overCap(actor);
+  const sig = o ? `${o.known}/${o.cap}` : null;
+  if (!o || warned.get(actor.id) === sig) return;
+  warned.set(actor.id, sig);
+  const msg = `${actor.name} knows ${o.known} weapon masteries; the PHB allows ${o.cap}. Fix it in Configure Weapons, or run the repair.`;
+  ui.notifications.warn(`WM5E Auto Masteries: ${msg}`);
+  ChatMessage.implementation.create({ content: `<b>WM5E Auto Masteries</b><br>${msg}`, whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id) });
+}
+function onUpdateActor(actor, changes) {
+  if (foundry.utils.hasProperty(changes, KEY_PATH)) warnIfOverCap(actor);
+}
+
+// Repair: trim each over-cap character to their PHB cap. Dry run unless apply is true.
+// Keeps level-up picks first, then the remaining known masteries in their current order.
+// Removed picks are saved in a flag so undoRepair() can put them back.
+async function repair({ apply = false, actors = null } = {}) {
+  if (!game.user.isGM) return ui.notifications.warn("WM5E Auto Masteries: repair is GM only.");
+  const list = (actors ?? game.actors.contents).filter(a => a.type === "character");
+  const rows = [];
+  for (const actor of list) {
+    const known = sourceKeys(actor);
+    const cap = masteryCap(actor);
+    if (known.length <= cap) continue;
+    const picks = levelUpPicks(actor).filter(k => known.includes(k));
+    const keep = [...new Set([...picks, ...known])].slice(0, cap);
+    const remove = known.filter(k => !keep.includes(k));
+    rows.push({ actor, cap, keep, remove });
+    if (apply) {
+      await actor.update({
+        [KEY_PATH]: keep,
+        [`flags.${MOD}.repair`]: { removed: remove, at: Date.now(), version: "2.2.0" }
+      });
+    }
   }
-}, 150);
-
-function onCreateItem(item, options, userId) {
-  if (userId !== game.user.id || !cfg.grant || item.type !== "weapon") return;
-  const actor = item.parent;
-  if (actor?.type !== "character" || options.pack) return;
-  const base = item.system.type?.baseItem;
-  if (!base || !item.system.mastery || sourceKeys(actor).includes(base)) return;
-  if (!pending.has(actor)) pending.set(actor, new Set());
-  pending.get(actor).add(base);
-  flushKeys();
+  const lines = rows.map(r => `${r.actor.name} (cap ${r.cap}): ${apply ? "removed" : "would remove"} ${r.remove.join(", ")}${r.keep.length ? ` | keeps ${r.keep.join(", ")}` : ""}`);
+  await ChatMessage.implementation.create({
+    whisper: [game.user.id],
+    content: `<b>WM5E repair: ${apply ? "APPLIED" : "DRY RUN, nothing changed"}</b><br>`
+      + (lines.length ? lines.join("<br>") : "Every character is within their PHB cap.")
+      + (!apply && lines.length ? `<br>To apply: <code>await game.modules.get("${MOD}").api.repair({ apply: true })</code>` : "")
+  });
+  return rows.map(r => ({ name: r.actor.name, cap: r.cap, keep: r.keep, remove: r.remove }));
 }
 
-// One actor: write only what differs.
+// Undo: restore masteries a repair removed.
+async function undoRepair({ actors = null } = {}) {
+  if (!game.user.isGM) return ui.notifications.warn("WM5E Auto Masteries: undo is GM only.");
+  const restored = [];
+  for (const actor of (actors ?? game.actors.contents)) {
+    const rec = actor.getFlag(MOD, "repair");
+    if (!rec?.removed?.length) continue;
+    const keys = [...new Set([...sourceKeys(actor), ...rec.removed])];
+    await actor.update({ [KEY_PATH]: keys });
+    await actor.unsetFlag(MOD, "repair");
+    restored.push(`${actor.name}: ${rec.removed.join(", ")}`);
+  }
+  await ChatMessage.implementation.create({
+    whisper: [game.user.id],
+    content: `<b>WM5E undo repair</b><br>${restored.length ? restored.join("<br>") : "Nothing to restore."}`
+  });
+  return restored;
+}
+
+// One actor: write only what differs. Never changes known masteries.
 async function processActor(actor, report) {
   const weapons = actor.itemTypes?.weapon;
   if (!weapons?.length) return;
-  const grant = cfg.grant && actor.type === "character";
-  const keys = new Set(sourceKeys(actor));
-  const before = keys.size;
   const updates = [];
   for (const item of weapons) {
     const p = planItem(item._source);
     if (p.changes) updates.push({ _id: item.id, ...p.changes });
-    if (grant && p.mastery && p.base) keys.add(p.base);
     if (p.weapon && !p.mastery) report?.manual.push(`${actor.name}: ${item.name}`);
   }
   if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);
-  if (keys.size !== before) await actor.update({ "system.traits.weaponProf.mastery.value": [...keys] });
-  if (report && (updates.length || keys.size !== before)) {
+  if (report && updates.length) {
     report.actors++;
     report.items += updates.length;
   }
@@ -210,7 +279,7 @@ async function applyAutoTrigger() {
 }
 
 Hooks.once("init", () => {
-  for (const key of ["desc", "infer", "grant"]) {
+  for (const key of ["desc", "infer", "warn"]) {
     game.settings.register(MOD, key, {
       name: `WM5EAM.${key}.name`, hint: `WM5EAM.${key}.hint`,
       scope: "world", config: true, type: Boolean, default: true,
@@ -226,12 +295,12 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
-  for (const key of ["desc", "infer", "grant"]) cfg[key] = game.settings.get(MOD, key);
+  for (const key of ["desc", "infer", "warn"]) cfg[key] = game.settings.get(MOD, key);
   cfg.link = game.packs.has(PACK);
-  game.modules.get(MOD).api = { sweep, processActor, planItem };
+  game.modules.get(MOD).api = { sweep, processActor, planItem, masteryCap, repair, undoRepair };
   applyAutoTrigger();
 });
 
 Hooks.on("preCreateItem", onPreCreateItem);
 Hooks.on("preCreateActor", onPreCreateActor);
-Hooks.on("createItem", onCreateItem);
+Hooks.on("updateActor", onUpdateActor);

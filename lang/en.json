@@ -3,11 +3,11 @@
   "WM5EAM.desc.hint": "Appends a link to the mastery's rule page at the end of each weapon's description.",
   "WM5EAM.infer.name": "Fill missing base items from weapon name",
   "WM5EAM.infer.hint": "When a Simple or Martial weapon has no base item, match it by name (e.g. 'Spiked Bone Club' becomes Club).",
-  "WM5EAM.grant.name": "Grant player characters their weapon masteries",
-  "WM5EAM.grant.hint": "Adds each owned weapon's base item to the character's mastery list. Ignores class limits on how many weapon kinds can be mastered.",
   "WM5EAM.autoTrigger.name": "Automatically trigger masteries for",
   "WM5EAM.autoTrigger.hint": "Sets Automated Masteries 5e's auto-trigger for every user at login. 'Everyone on' or 'Everyone off' hides the per-player checkbox. 'Each player chooses' restores it.",
   "WM5EAM.autoTrigger.on": "Everyone on",
   "WM5EAM.autoTrigger.off": "Everyone off",
-  "WM5EAM.autoTrigger.players": "Each player chooses"
+  "WM5EAM.autoTrigger.players": "Each player chooses",
+  "WM5EAM.warn.name": "Warn the GM about characters over their mastery limit",
+  "WM5EAM.warn.hint": "Shows a warning and whispers the GM when a character knows more weapon masteries than the 2024 PHB allows for their class and level. Never changes data."
 }

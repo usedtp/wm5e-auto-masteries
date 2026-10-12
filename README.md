@@ -1,55 +1,72 @@
 # WM5E Auto Masteries
 
-A Foundry VTT helper module for dnd5e that sets up weapon masteries so [Automated Masteries 5e](https://foundryvtt.com/packages/wm5e) works without manual data entry.
+Helper for [Automated Masteries 5e](https://foundryvtt.com/packages/wm5e) on Foundry VTT v14 with dnd5e 6.0.x.
 
-## What it does
-
-- Sets each weapon's 2024 Player's Handbook mastery when the weapon is created.
-- Fills a missing base item by weapon name (for example, "Spiked Bone Club" becomes Club).
-- Adds a link to the mastery's rule page at the end of the weapon description.
-- Grants player characters the matching mastery for each weapon they own. It ignores class limits on how many weapon kinds can be mastered.
+- Sets each weapon's 2024 PHB mastery and base item as it is created.
+- Links the mastery's rule page at the end of each weapon description.
+- Enforces 2024 PHB mastery limits: warns the GM when a character knows too many, and repairs it on request.
 - Lets the GM turn Automated Masteries 5e auto-triggering on or off for every user.
-- Includes a one-time sweep for existing actors and world items.
 
-Changes are applied as items are created, so there is no second database write. The module does not load compendium documents and writes only when something differs.
+It never grants masteries. Players choose them at level-up or in Configure Weapons.
 
 ## Requirements
-
-- Foundry VTT v14 (14.367 or newer)
-- dnd5e system 6.0.0 or newer (built against 6.0.6)
-- Recommended: [Automated Masteries 5e](https://foundryvtt.com/packages/wm5e), which applies the mastery effects. That module requires [Automated Conditions 5e](https://foundryvtt.com/packages/automated-conditions-5e).
+- Foundry VTT 14.367 or later
+- dnd5e 6.0.x
+- Automated Masteries 5e and Automated Conditions 5e (recommended; this module prepares data, they apply the effects)
 
 ## Install
+In Foundry: Add-on Modules, Install Module, paste this Manifest URL, Install:
 
-1. In Foundry, open **Add-on Modules**, then **Install Module**.
-2. Paste this into **Manifest URL** and click **Install**:
-   `https://github.com/usedtp/wm5e-auto-masteries/releases/latest/download/module.json`
-3. Launch your world as GM. Open **Game Settings**, **Manage Modules**, tick **WM5E Auto Masteries**, click **Save Module Settings**.
+```
+https://github.com/usedtp/wm5e-auto-masteries/releases/latest/download/module.json
+```
 
-## Update
+Updates then appear under Foundry's Update button.
 
-Open **Add-on Modules** and click **Update** next to WM5E Auto Masteries.
+## First run (GM)
+Run once as a Script macro to fix actors and items that existed before install:
 
-## Settings
+```js
+await game.modules.get("wm5e-auto-masteries").api.sweep()
+```
 
-Open **Game Settings**, **Configure Settings**, **WM5E Auto Masteries**.
+## Mastery limits (2024 PHB)
+| Class | Weapon kinds |
+| --- | --- |
+| Barbarian | 2; 3 at level 4; 4 at level 10 |
+| Fighter | 3; 4 at level 4; 5 at level 10; 6 at level 16 |
+| Paladin, Ranger, Rogue | 2 |
+| Weapon Master feat | +1 |
+| Other classes, monsters | 0 |
 
-| Setting | Default | Effect |
-|---|---|---|
-| Add mastery link to weapon descriptions | On | Appends the mastery rule link to each weapon description |
-| Fill missing base items from weapon name | On | Matches Simple and Martial weapons with no base item by name |
-| Grant player characters their weapon masteries | On | Adds each owned weapon's base item to the character's mastery list |
-| Automatically trigger masteries for | Everyone on | Everyone on, Everyone off, or Each player chooses |
+Multiclass characters use their highest single class.
 
-## Fix existing actors and items
+## Repair over-limit characters (GM)
+```js
+await game.modules.get("wm5e-auto-masteries").api.repair()                 // dry run, changes nothing
+await game.modules.get("wm5e-auto-masteries").api.repair({ apply: true })  // apply
+await game.modules.get("wm5e-auto-masteries").api.undoRepair()            // restore removed picks
+```
 
-New weapons are handled automatically. For weapons that already exist, run the sweep once as GM:
+## Settings (world)
+| Setting | Default |
+| --- | --- |
+| Automatically trigger masteries for | Everyone on |
+| Add mastery link to weapon descriptions | On |
+| Fill missing base items from weapon name | On |
+| Warn the GM about characters over their mastery limit | On |
 
-1. Press F12 to open the browser console.
-2. Run: `game.modules.get("wm5e-auto-masteries").api.sweep()`
-3. To include unlinked tokens on scenes, run: `game.modules.get("wm5e-auto-masteries").api.sweep({ scenes: true })`
-4. A whispered chat message reports what changed and lists weapons that need manual setup.
+## Macros
+`macros/` holds GM tools: `wm5e-qa.js` (in-world QA suite, sandboxed), `wm5e-mastery-audit.js` (read-only audit report), `cleave-check.js` (explains why Cleave finds no second target).
 
-## Report a problem
+## Development
+```sh
+npm test
+```
 
-Open an issue on this repo. Include your Foundry and dnd5e versions and any red errors from the browser console (F12).
+### Releasing a new version
+1. Bump `version` in `module.json` (MAJOR.MINOR.PATCH) and add an entry to `CHANGELOG.md`.
+2. Commit and push to `main`.
+3. Create a GitHub release with tag `<version>` (for example `2.2.1`, no "v") and publish it. Do not mark it as a pre-release.
+
+The Release workflow runs the tests, checks the tag matches `module.json`, writes the repository URLs into `module.json`, and attaches `module.json` and `module.zip` to the release.

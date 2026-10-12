@@ -1,0 +1,9 @@
+{
+  "name": "wm5e-auto-masteries",
+  "private": true,
+  "type": "module",
+  "description": "Foundry VTT module. package.json exists only to run the tests; it is not shipped in the release zip.",
+  "scripts": {
+    "test": "node tests/weapons.test.mjs && node tests/auto-trigger.test.mjs && node tests/mastery-caps.test.mjs"
+  }
+}
