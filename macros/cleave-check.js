@@ -1,13 +1,16 @@
 // Cleave diagnostic. Read-only. Run as a Script macro.
 // Setup: select the ATTACKER token (click it), and TARGET the creature it hit (T key or right-click > target).
 // Runs the same filters Automated Masteries 5e uses for Cleave and explains each token it rejects.
+// Failures are logged through usedtp Logger under WM5E Auto Masteries.
+const log = () => game.modules.get("wm5e-auto-masteries").api.log();
 const lines = [];
-try {
-  const attacker = canvas.tokens.controlled[0];
-  const first = [...game.user.targets][0];
-  if (!attacker) throw new Error("Select the attacker token first.");
-  if (!first) throw new Error("Target the creature the attacker hit first.");
-  if (typeof ac5e === "undefined") throw new Error("Automated Conditions 5e is not active.");
+const attacker = canvas.tokens.controlled[0];
+const first = [...game.user.targets][0];
+const setup = !attacker ? "Select the attacker token first."
+  : !first ? "Target the creature the attacker hit first."
+  : typeof ac5e === "undefined" ? "Automated Conditions 5e is not active." : null;
+if (setup) lines.push(`<b>Cleave check</b> | ${setup}`);
+else await log().guard("Cleave check", async () => {
 
   const weapon = attacker.actor?.itemTypes.weapon.find(i => i.system.mastery === "cleave");
   const activity = weapon?.system.activities?.find(a => a.type === "attack");
@@ -35,7 +38,5 @@ try {
     lines.push(`${why.length ? "NO" : "<b>VALID</b>"} | ${t.name} | to attacker ${dA}, to first target ${dT}${why.length ? " | " + why.join("; ") : ""}`);
   }
   lines.push(`<b>Valid Cleave targets: ${valid}</b>`);
-} catch (e) {
-  lines.push(`<b>ERROR</b> ${e.message}`);
-}
+}, { actor: attacker?.name, target: first?.name, weapon: attacker?.actor?.itemTypes.weapon.find(i => i.system.mastery === "cleave")?.name ?? null, mastery: "cleave" });
 ChatMessage.implementation.create({ content: lines.join("<br>"), whisper: [game.user.id] });

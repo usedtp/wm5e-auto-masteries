@@ -12,6 +12,7 @@ It never grants masteries. Players choose them at level-up or in Configure Weapo
 ## Requirements
 - Foundry VTT 14.367 or later
 - dnd5e 6.0.x
+- [usedtp Logger](https://github.com/usedtp/usedtp-logger) 1.0.0 or later (Foundry offers to install it with this module). Errors and "unclear" cases show under GM Settings, usedtp Logger, Open logs.
 - Automated Masteries 5e and Automated Conditions 5e (recommended; this module prepares data, they apply the effects)
 
 ## Install
@@ -66,7 +67,6 @@ npm test
 
 ### Releasing a new version
 1. Bump `version` in `module.json` (MAJOR.MINOR.PATCH) and add an entry to `CHANGELOG.md`.
-2. Commit and push to `main`.
-3. Create a GitHub release with tag `<version>` (for example `2.2.1`, no "v") and publish it. Do not mark it as a pre-release.
+2. Push to `main`.
 
-The Release workflow runs the tests, checks the tag matches `module.json`, writes the repository URLs into `module.json`, and attaches `module.json` and `module.zip` to the release.
+The Release workflow runs when `main` has a `module.json` version with no release yet. It runs the tests, writes the repository URLs into `module.json`, tags the version, and publishes a release with `module.json` and `module.zip`.

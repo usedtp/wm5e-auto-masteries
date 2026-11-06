@@ -1,7 +1,10 @@
-// WM5E Auto Masteries 2.2.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.3.0 for dnd5e 6.0.x on Foundry v14.
 // 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
+// 2.3.0: diagnostics go through usedtp Logger (scripts/diag.mjs).
 // Design for low load: no compendium document loads, no render hooks,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
+
+import { log } from "./diag.mjs";
 
 const MOD = "wm5e-auto-masteries";
 const PACK = "dnd5e.content24";
@@ -95,11 +98,20 @@ const CLASS_CAP = {
   paladin: () => 2, ranger: () => 2, rogue: () => 2
 };
 
+// 2024 PHB classes. A class outside this list gets cap 0, which the GM has to confirm.
+const PHB_CLASSES = new Set(["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"]);
+
 // Highest single class (features of the same name don't stack) + 1 per Weapon Master feat.
 function masteryCap(actor) {
   if (actor?.type !== "character") return 0;
   let best = 0;
-  for (const [id, cls] of Object.entries(actor.classes ?? {})) best = Math.max(best, CLASS_CAP[id]?.(cls.system?.levels ?? 0) ?? 0);
+  for (const [id, cls] of Object.entries(actor.classes ?? {})) {
+    if (!PHB_CLASSES.has(id)) {
+      log().unclear(`unknown-class:${actor.id}:${id}`, `${actor.name}'s class "${id}" is not a 2024 PHB class; its weapon mastery count is taken as 0. The GM sets masteries by hand.`,
+        { actor: actor.name, actorUuid: actor.uuid, class: id, weapon: null, mastery: null });
+    }
+    best = Math.max(best, CLASS_CAP[id]?.(cls.system?.levels ?? 0) ?? 0);
+  }
   const feats = actor.items.filter(i => i.type === "feat" && i.name.trim().toLowerCase() === "weapon master").length;
   return best + feats;
 }
@@ -118,11 +130,28 @@ function levelUpPicks(actor) {
 
 const sourceKeys = actor => actor._source?.system?.traits?.weaponProf?.mastery?.value ?? [];
 
+/**
+ * A weapon the module cannot finish on its own: no PHB mastery for it (homebrew), or a player character's weapon
+ * with no base item, which dnd5e needs before the mastery can be used. The GM or player sets it by hand.
+ */
+function noteManual(src, p, actor) {
+  if (!p.weapon) return;
+  const data = { weapon: src?.name, mastery: p.mastery || null, actor: actor?.name ?? null, actorUuid: actor?.uuid ?? null, baseItem: p.base || null };
+  if (!p.mastery) {
+    log().unclear(`no-mastery:${actor?.id ?? "world"}:${src?.name}`,
+      `${src?.name} has no 2024 PHB mastery to apply (no matching base item or name). The GM sets Mastery on the item by hand.`, data);
+  } else if (!p.base && actor?.type === "character") {
+    log().unclear(`no-base:${actor.id}:${src?.name}`,
+      `${actor.name}'s ${src?.name} has mastery ${p.mastery} but no base item, so dnd5e will not offer it. The GM sets Base Item on the weapon.`, data);
+  }
+}
+
 // New world or sidebar weapon: fix data before it is written. No extra database write.
 function onPreCreateItem(item, data, options) {
   if (item.type !== "weapon" || options.pack) return;
-  const { changes } = planItem(item._source);
-  if (changes) item.updateSource(foundry.utils.expandObject(changes));
+  const p = planItem(item._source);
+  if (p.changes) item.updateSource(foundry.utils.expandObject(p.changes));
+  noteManual(item._source, p, item.parent);
 }
 
 // New actor with weapons already on it (compendium drag, import, duplicate): fix weapon data in one pass.
@@ -133,6 +162,7 @@ function onPreCreateActor(actor, data, options) {
   const next = items.map(src => {
     if (src.type !== "weapon") return src;
     const p = planItem(src);
+    noteManual(src, p, actor);
     if (!p.changes) return src;
     touched = true;
     return foundry.utils.mergeObject(foundry.utils.deepClone(src), foundry.utils.expandObject(p.changes));
@@ -157,6 +187,7 @@ function warnIfOverCap(actor) {
   if (!o || warned.get(actor.id) === sig) return;
   warned.set(actor.id, sig);
   const msg = `${actor.name} knows ${o.known} weapon masteries; the PHB allows ${o.cap}. Fix it in Configure Weapons, or run the repair.`;
+  log().unclear(`over-cap:${actor.id}:${sig}`, msg, { actor: actor.name, actorUuid: actor.uuid, weapon: null, mastery: sourceKeys(actor), cap: o.cap });
   ui.notifications.warn(`WM5E Auto Masteries: ${msg}`);
   ChatMessage.implementation.create({ content: `<b>WM5E Auto Masteries</b><br>${msg}`, whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id) });
 }
@@ -178,11 +209,16 @@ async function repair({ apply = false, actors = null } = {}) {
     const picks = levelUpPicks(actor).filter(k => known.includes(k));
     const keep = [...new Set([...picks, ...known])].slice(0, cap);
     const remove = known.filter(k => !keep.includes(k));
+    if (picks.length < keep.length) {
+      log().unclear(`repair-order:${actor.id}`,
+        `${actor.name} has no level-up picks for ${keep.length - picks.length} of the ${cap} masteries kept, so the first ones in the list were kept. The GM or player confirms the choice in Configure Weapons.`,
+        { actor: actor.name, actorUuid: actor.uuid, weapon: null, mastery: keep, removed: remove, levelUpPicks: picks });
+    }
     rows.push({ actor, cap, keep, remove });
     if (apply) {
       await actor.update({
         [KEY_PATH]: keep,
-        [`flags.${MOD}.repair`]: { removed: remove, at: Date.now(), version: "2.2.0" }
+        [`flags.${MOD}.repair`]: { removed: remove, at: Date.now(), version: game.modules.get(MOD)?.version }
       });
     }
   }
@@ -224,6 +260,7 @@ async function processActor(actor, report) {
     const p = planItem(item._source);
     if (p.changes) updates.push({ _id: item.id, ...p.changes });
     if (p.weapon && !p.mastery) report?.manual.push(`${actor.name}: ${item.name}`);
+    noteManual(item._source, p, actor);
   }
   if (updates.length) await actor.updateEmbeddedDocuments("Item", updates);
   if (report && updates.length) {
@@ -266,15 +303,19 @@ async function sweep({ scenes = false } = {}) {
 // Each client syncs its own user setting to the GM's choice once at login and on change; no writes when already in sync.
 async function applyAutoTrigger() {
   if (!game.modules.get(WM5E)?.active) return;
-  const def = game.settings.settings.get(`${WM5E}.autoMasteries`);
-  if (!def) return;
   const mode = game.settings.get(MOD, "autoTrigger");
+  const def = game.settings.settings.get(`${WM5E}.autoMasteries`);
+  if (!def) {
+    log().unclear("autotrigger-setting-missing",
+      `Automated Masteries 5e has no "autoMasteries" setting, so auto-trigger cannot be set to "${mode}". Each player sets it in Automated Masteries 5e.`,
+      { weapon: null, mastery: null, actor: null, mode, wm5eVersion: game.modules.get(WM5E)?.version });
+    return;
+  }
   def.config = mode === "players";
   if (mode === "players") return;
   const want = mode === "on";
   if (game.settings.get(WM5E, "autoMasteries") !== want) {
-    try { await game.settings.set(WM5E, "autoMasteries", want); }
-    catch (e) { console.error(`${MOD} | could not set auto-trigger`, e); }
+    await log().guard("set auto-trigger", () => game.settings.set(WM5E, "autoMasteries", want), { weapon: null, mastery: null, actor: null, mode, want });
   }
 }
 
@@ -297,10 +338,31 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   for (const key of ["desc", "infer", "warn"]) cfg[key] = game.settings.get(MOD, key);
   cfg.link = game.packs.has(PACK);
-  game.modules.get(MOD).api = { sweep, processActor, planItem, masteryCap, repair, undoRepair };
+  game.modules.get(MOD).api = {
+    sweep: o => log().guard("sweep", () => sweep(o)),
+    repair: o => log().guard("repair", () => repair(o)),
+    undoRepair: o => log().guard("undo repair", () => undoRepair(o)),
+    processActor, planItem, masteryCap, log
+  };
+  log().info("ready");
   applyAutoTrigger();
 });
 
-Hooks.on("preCreateItem", onPreCreateItem);
-Hooks.on("preCreateActor", onPreCreateActor);
-Hooks.on("updateActor", onUpdateActor);
+// Each mastery hook runs inside log().guard: a failure is logged with the weapon, mastery and actor, and Foundry
+// carries on. guard calls the handler synchronously, so preCreate changes still land before the document is saved.
+Hooks.on("preCreateItem", (item, data, options) => {
+  if (item.type !== "weapon") return;
+  return log().guard("preCreateItem", () => onPreCreateItem(item, data, options),
+    { weapon: item.name, mastery: item._source?.system?.mastery || null, actor: item.parent?.name ?? null, actorUuid: item.parent?.uuid ?? null });
+});
+Hooks.on("preCreateActor", (actor, data, options) => {
+  const weapons = (actor._source?.items ?? []).filter(i => i.type === "weapon");
+  if (!weapons.length) return;
+  return log().guard("preCreateActor", () => onPreCreateActor(actor, data, options),
+    { weapon: weapons.map(i => i.name), mastery: weapons.map(i => i.system?.mastery || null), actor: actor.name });
+});
+Hooks.on("updateActor", (actor, changes) => {
+  if (!foundry.utils.hasProperty(changes, KEY_PATH)) return;
+  return log().guard("updateActor", () => onUpdateActor(actor, changes),
+    { weapon: null, mastery: sourceKeys(actor), actor: actor.name, actorUuid: actor.uuid });
+});

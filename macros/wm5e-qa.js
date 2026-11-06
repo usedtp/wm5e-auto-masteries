@@ -1,8 +1,10 @@
-// WM5E Auto Masteries QA suite. Run as GM: as a Script macro, or pasted into the browser console.
+// WM5E Auto Masteries QA suite. Run as GM: as a Script macro, or pasted into the browser's developer tools (F12).
+// Failures are logged through usedtp Logger under WM5E Auto Masteries.
 // Creates temporary test documents in a "WM5E QA (temp)" folder and deletes them at the end.
 // The only check that reads your real actors and items is read-only (no writes).
 await (async () => {
   const MOD = "wm5e-auto-masteries";
+  const log = () => game.modules.get(MOD).api.log();
   const results = [];
   const created = { actors: [], items: [], folders: [] };
   const t = (group, name, pass, detail = "") => results.push({ group, name, pass: !!pass, detail: String(detail) });
@@ -17,13 +19,14 @@ await (async () => {
     t("Environment", "GM user", game.user.isGM, game.user.name);
     t("Environment", "Foundry 14.367+", !foundry.utils.isNewerVersion("14.367", ver), ver);
     t("Environment", "dnd5e 6.x", game.system.id === "dnd5e" && String(game.system.version).startsWith("6."), game.system.version);
-    for (const id of [MOD, "wm5e", "automated-conditions-5e"]) {
+    for (const id of [MOD, "usedtp-logger", "wm5e", "automated-conditions-5e"]) {
       const m = game.modules.get(id);
       t("Environment", `${id} active`, m?.active, m?.version ?? "not installed");
     }
     const api = game.modules.get(MOD)?.api;
     t("Environment", "API exposed", api?.sweep && api?.planItem && api?.processActor && api?.repair && api?.undoRepair && api?.masteryCap);
-    t("Environment", "Version 2.2.0+", !foundry.utils.isNewerVersion("2.2.0", game.modules.get(MOD)?.version ?? "0"), game.modules.get(MOD)?.version);
+    t("Environment", "Version 2.3.0+", !foundry.utils.isNewerVersion("2.3.0", game.modules.get(MOD)?.version ?? "0"), game.modules.get(MOD)?.version);
+    t("Environment", "Logging through usedtp Logger", typeof api.log === "function" && !!game.modules.get("usedtp-logger")?.api?.register, game.modules.get("usedtp-logger")?.version ?? "not installed");
     if (!game.user.isGM || !api) throw new Error("Cannot continue: GM login and an active module are required");
 
     // 2. Settings
@@ -132,11 +135,12 @@ await (async () => {
     t("World audit (read-only)", "No characters over their PHB mastery cap", !over.length, over.map(a => `${a.name} ${known(a).length}/${api.masteryCap(a)}`).join("; ") || "all within cap");
     t("World audit (read-only)", "No weapons waiting for the sweep", !pending.length, pending.length ? pending.slice(0, 15).join("; ") : "all clean");
   } catch (e) {
-    t("Error", "Suite aborted", false, e.message);
+    log().error("QA suite aborted", e);
+    t("Error", "Suite aborted (logged to usedtp Logger)", false, e.message);
   } finally {
-    for (const a of created.actors) await a.delete().catch(() => {});
-    for (const i of created.items) await i.delete().catch(() => {});
-    for (const f of created.folders) await f.delete().catch(() => {});
+    for (const a of created.actors) await log().guard("QA cleanup", () => a.delete(), { actor: a.name });
+    for (const i of created.items) await log().guard("QA cleanup", () => i.delete(), { weapon: i.name });
+    for (const f of created.folders) await log().guard("QA cleanup", () => f.delete(), { folder: f.name });
     t("Cleanup", "Temporary documents removed", !game.actors.some(a => a.folder?.name === "WM5E QA (temp)") && !game.folders.some(f => f.name === "WM5E QA (temp)"));
   }
 

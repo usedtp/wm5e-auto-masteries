@@ -3,6 +3,18 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.3.0] - 2026-11-06
+### Changed
+- Diagnostics and reports now go through usedtp Logger. The module requires usedtp Logger 1.0.0 or later.
+- Every mastery hook (new weapon, new actor with weapons, change to a character's known masteries) runs guarded: a failure is logged with the weapon, mastery and actor, and Foundry carries on.
+- Setting Automated Masteries 5e's auto-trigger is guarded the same way; the old console error is gone.
+- The QA and Cleave check macros log failures through usedtp Logger.
+- Release builds on every push to main when `module.json` has a new version.
+### Added
+- "Unclear" entries in usedtp Logger whenever the module hands a decision back to the GM or player: a weapon with no PHB mastery, a character's weapon with a mastery but no base item, a class that is not in the 2024 PHB, a character over their mastery limit, a repair that had to choose which masteries to keep, and an Automated Masteries 5e version without the auto-trigger setting.
+- `api.log()` for macros.
+- `scripts/diag.mjs`: the only file that talks to usedtp Logger. Without usedtp Logger the module still runs and logs to the console.
+
 ## [2.2.0] - 2026-10-12
 ### Changed
 - Never grants weapon masteries to characters. Players pick them at level-up or in Configure Weapons.
