@@ -1,11 +1,12 @@
 # Changelog
 
-## 2.4.0
-- Error and Unclear buttons under every weapon attack and damage card, matching Roll Lessons. Reports go to usedtp Logger with the weapon, mastery, base item, mastery used, whether the character knows it, and whether Automated Masteries 5e acted.
-- New world setting to turn the buttons off.
-
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
+
+## [2.4.0] - 2026-11-06
+### Added
+- Error and Unclear buttons under every weapon attack and damage card, matching Roll Lessons. Reports go to usedtp Logger with the weapon, mastery, base item, mastery used, whether the character knows it, and whether Automated Masteries 5e acted.
+- New world setting to turn the buttons off.
 
 ## [2.3.0] - 2026-11-06
 ### Changed

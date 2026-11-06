@@ -63,6 +63,7 @@ await game.modules.get("wm5e-auto-masteries").api.undoRepair()            // res
 | Add mastery link to weapon descriptions | On |
 | Fill missing base items from weapon name | On |
 | Warn the GM about characters over their mastery limit | On |
+| Error and Unclear buttons on weapon cards | On |
 
 ## Macros
 `macros/` holds GM tools: `wm5e-qa.js` (in-world QA suite, sandboxed), `wm5e-mastery-audit.js` (read-only audit report), `cleave-check.js` (explains why Cleave finds no second target).
