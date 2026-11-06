@@ -1,5 +1,5 @@
 import { log } from "../diag.mjs";
-import { TIMING, BUILT, attackOutcome, eligibleMastery, sourceExpires, lineText, toppleDC, grazeDamage } from "./rules.mjs";
+import { TIMING, BUILT, attackOutcome, eligibleMastery, sourceExpires, lineText, toppleDC, grazeDamage, turnKey } from "./rules.mjs";
 import { PUSHABLE, COMPASS, direction, planPath, choosePath, distances } from "./push.mjs";
 
 /*
@@ -13,6 +13,7 @@ import { PUSHABLE, COMPASS, direction, planPath, choosePath, distances } from ".
 const MOD = "wm5e-auto-masteries";
 const WM5E = "wm5e";
 export const QUERY = `${MOD}.run`;
+export const QUERY_EXTRA = `${MOD}.extraAttack`;
 const NAME = { sap: "Sap (weapon mastery)", vex: "Vex (weapon mastery)", slow: "Slow (weapon mastery)" };
 const IMG = { sap: "icons/svg/downgrade.svg", vex: "icons/svg/target.svg", slow: "icons/svg/net.svg" };
 const RECENT = 200;
@@ -128,6 +129,7 @@ export async function handle(job) {
   switch (job?.kind) {
     case "damage": return onDamageLanded(job);
     case "consume": return consumeEffect(job.effectUuid);
+    case "nickLine": return addNickLine(job);
     default: log().warn("unknown mastery job", job); return null;
   }
 }
@@ -201,6 +203,9 @@ async function undo(line) {
     if (actor?.statuses?.has(u.status)) await actor.toggleStatusEffect(u.status, { active: false });
   } else if (u?.type === "message") {
     await game.messages.get(u.messageId)?.delete();
+  } else if (u?.type === "messages") {
+    for (const id of u.ids ?? []) await game.messages.get(id)?.delete();
+    if (u.clearFlag) { const actor = await fromUuid(u.clearFlag.actorUuid); await actor?.unsetFlag(MOD, u.clearFlag.key); }
   } else if (u?.type === "move") {
     const token = await fromUuid(u.tokenUuid);
     if (token) await token.update({ x: u.x, y: u.y }, { animate: false });
@@ -261,6 +266,8 @@ async function applyMastery(mastery, { attackMessage, attacker, target, targetAc
     return applyGraze({ id, attackMessage, attacker, target, targetActor, item, stamp });
   } else if (mastery === "push") {
     return applyPush({ id, attackMessage, attacker, target, targetActor, stamp });
+  } else if (mastery === "cleave") {
+    return applyCleave({ id, attackMessage, attacker, target, targetActor, item, stamp });
   } else return null;
   await addLine(attackMessage, {
     id, mastery, status: "applied", applied: stamp,
@@ -433,6 +440,154 @@ async function applyPush({ id, attackMessage, attacker, target, targetActor, sta
   return null;
 }
 
+/* ---------- Cleave and Nick: extra attacks ---------- */
+
+/**
+ * Make an extra attack in this browser: its own use card (so its Damage button is its own), then the attack roll.
+ * Cleave targets the chosen creature; Nick uses the player's current targets. Runs on the attacker's browser.
+ */
+export async function performExtraAttack({ activityUuid, tokenUuid, extra, fromId, attackMode }) {
+  const activity = await fromUuid(activityUuid);
+  if (!activity) throw new Error("extra attack: activity not found");
+  if (tokenUuid) {
+    const tok = await fromUuid(tokenUuid);
+    if (!tok?.object) throw new Error("extra attack: target token is not on this browser's canvas");
+    for (const t of [...game.user.targets]) t.setTarget(false, { releaseOthers: false });
+    tok.object.setTarget(true, { releaseOthers: true });
+  }
+  const flags = { [MOD]: { extra, fromId } };
+  const used = await activity.use({ subsequentActions: false, consume: false }, { configure: false }, { data: { flags } });
+  const usageId = used?.message?.id ?? null;
+  const config = attackMode ? { attackMode } : {};
+  await activity.rollAttack(config, { configure: false }, { data: { flags, system: { origin: usageId } } });
+  const card = game.messages.contents.findLast(m => m.type === "attack" && flag(m, "extra") === extra && flag(m, "fromId") === fromId);
+  return { usageId, attackId: card?.id ?? null };
+}
+
+async function extraAttackAs(user, data) {
+  if (!user || user.id === game.user.id) return performExtraAttack(data);
+  return user.query(QUERY_EXTRA, data, { timeout: PROMPT_MS });
+}
+
+/** Grid distance in feet between two tokens, nearest squares (works for Large and bigger). */
+function tokenDistance(scene, a, b) {
+  const grid = scene.grid;
+  const cells = t => (t.getOccupiedGridSpaceOffsets?.() ?? [grid.getOffset({ x: t.x, y: t.y })]).map(o => grid.getCenterPoint(o));
+  let best = Infinity;
+  for (const pa of cells(a)) for (const pb of cells(b)) best = Math.min(best, grid.measurePath([pa, pb]).distance);
+  return best;
+}
+
+/** Cleave: second melee attack against a creature within 5 ft of the first and within reach. Once per turn. */
+async function applyCleave({ id, attackMessage, attacker, target, targetActor, item, stamp }) {
+  const activity = attackMessage.getAssociatedActivity?.() ?? item.system?.activities?.find?.(a => a.type === "attack");
+  const melee = activity?.attack?.type?.value === "melee" && !String(attackMessage.system?.mode ?? "").startsWith("thrown");
+  if (!melee) return null;
+  const key = turnKey(stamp);
+  if (attacker.getFlag?.(MOD, "cleaveTurn") === key) {
+    await addLine(attackMessage, { id, mastery: "cleave", status: "approved", applied: stamp, text: lineText("cleave", { used: true }) });
+    return null;
+  }
+  const targetTok = target?.token ? await fromUuid(target.token) : null;
+  const scene = targetTok?.parent;
+  const attackerTok = scene?.tokens?.get(attackMessage.speaker?.token) ?? scene?.tokens?.find(t => t.actor?.uuid === attacker.uuid);
+  if (!targetTok || !attackerTok) return null;
+  const reach = item.system?.properties?.has?.("rch") ? 10 : 5;
+  const candidates = scene.tokens.filter(t => t.id !== targetTok.id && t.id !== attackerTok.id && t.actor && !t.hidden
+    && !((t.actor.system?.attributes?.hp?.value ?? 1) <= 0)
+    && tokenDistance(scene, t, targetTok) <= 5 && tokenDistance(scene, t, attackerTok) <= reach);
+  if (!candidates.length) return null;
+
+  const asker = askerFor(attackMessage);
+  let second = candidates[0];
+  if (candidates.length > 1) {
+    const pick = await ask(asker, {
+      title: game.i18n.localize("WM5EAM.cleave.title"),
+      content: `<p>${game.i18n.localize("WM5EAM.cleave.hint")}</p>`,
+      buttons: [...candidates.map((t, i) => ({ action: t.id, label: t.name, default: i === 0 })), { action: "none", label: game.i18n.localize("WM5EAM.cleave.none") }]
+    });
+    if (!pick || pick === "none") {
+      if (pick === "none") await addLine(attackMessage, { id, mastery: "cleave", status: "approved", applied: stamp, text: "Cleave: not used." });
+      return null;
+    }
+    second = candidates.find(t => t.id === pick) ?? second;
+  }
+  await attacker.setFlag(MOD, "cleaveTurn", key);
+  const result = await extraAttackAs(asker, { activityUuid: activity.uuid, tokenUuid: second.uuid, extra: "cleave", fromId: attackMessage.id });
+  await addLine(attackMessage, {
+    id, mastery: "cleave", status: "applied", applied: stamp,
+    text: lineText("cleave", { second: second.name }),
+    undo: { type: "messages", ids: [result?.usageId, result?.attackId].filter(Boolean), clearFlag: { actorUuid: attacker.uuid, key: "cleaveTurn" } }
+  });
+  log().info("cleave attack made", { messageId: attackMessage.id, second: second.name });
+  return null;
+}
+
+/** dnd5e.preRollDamageV2: the Cleave attack's damage adds the ability modifier only if it is negative. */
+export function onPreRollDamage(config) {
+  if (!engineActive()) return;
+  const id = config?.event?.target?.closest?.("[data-message-id]")?.dataset?.messageId;
+  const source = id ? game.messages.get(id) : null;
+  if ((source ? flag(source, "extra") : config?.[MOD]?.extra) !== "cleave") return;
+  for (const roll of config.rolls ?? []) {
+    if (!roll.base || !((roll.data?.mod ?? 0) > 0)) continue;
+    roll.parts = (roll.parts ?? []).filter(p => p !== "@mod");
+  }
+}
+
+/** Light weapons the actor could make the Nick attack with: equipped, Light, not the weapon just used. */
+export function nickWeapons(actor, usedItem) {
+  return (actor?.items?.contents ?? [...(actor?.items ?? [])]).filter(i => i.type === "weapon" && i.id !== usedItem?.id
+    && i.system?.properties?.has?.("lgt") && i.system?.equipped && i.system?.activities?.find?.(a => a.type === "attack"));
+}
+
+/** Can this browser show the Nick button on this attack card right now? */
+export function nickAvailable(message) {
+  if (!engineActive() || message?.type !== "attack" || masteryFor(message) !== "nick" || flag(message, "extra")) return false;
+  const actor = message.getAssociatedActor?.();
+  if (!actor?.isOwner) return false;
+  const stamp = turnStamp(actor);
+  if (!stamp) return false;
+  const combat = game.combats?.get?.(stamp.combatId);
+  if (combat?.combatant?.actor?.uuid !== actor.uuid) return false; // the Light extra attack is on the attacker's turn
+  if (actor.getFlag?.(MOD, "nickTurn") === turnKey(stamp)) return false;
+  return !hasLine(message, "nick");
+}
+
+/** Nick button: the Light property's extra attack, now, as part of the Attack action. Off-hand damage rule. */
+export async function nickAttack(message) {
+  if (!nickAvailable(message)) return null;
+  const actor = message.getAssociatedActor();
+  const weapons = nickWeapons(actor, message.getAssociatedItem());
+  if (!weapons.length) { ui.notifications?.warn(game.i18n.localize("WM5EAM.nick.noWeapon")); return null; }
+  let weapon = weapons[0];
+  if (weapons.length > 1) {
+    const pick = await foundry.applications.api.DialogV2.wait({
+      window: { title: game.i18n.localize("WM5EAM.nick.title") }, rejectClose: false,
+      buttons: weapons.map((w, i) => ({ action: w.id, label: w.name, default: i === 0 }))
+    });
+    weapon = weapons.find(w => w.id === pick);
+    if (!weapon) return null;
+  }
+  const stamp = turnStamp(actor);
+  await actor.setFlag(MOD, "nickTurn", turnKey(stamp));
+  const activity = weapon.system.activities.find(a => a.type === "attack");
+  const result = await performExtraAttack({ activityUuid: activity.uuid, tokenUuid: null, extra: "nick", fromId: message.id, attackMode: "offhand" });
+  await runOnGM({ kind: "nickLine", messageId: message.id, weapon: weapon.name, ids: [result.usageId, result.attackId].filter(Boolean), actorUuid: actor.uuid, stamp });
+  return result;
+}
+
+async function addNickLine({ messageId, weapon, ids, actorUuid, stamp }) {
+  const message = game.messages.get(messageId);
+  if (!message || hasLine(message, "nick")) return null;
+  await addLine(message, {
+    id: foundry.utils.randomID(), mastery: "nick", status: "applied", applied: stamp,
+    text: lineText("nick", { weapon }),
+    undo: { type: "messages", ids, clearFlag: { actorUuid, key: "nickTurn" } }
+  });
+  return true;
+}
+
 /** Context shared by attack- and damage-time decisions. Null when nothing should happen. */
 async function attackContext(attackMessage) {
   if (attackMessage?.type !== "attack") return null;
@@ -457,8 +612,9 @@ async function attackContext(attackMessage) {
 /** Active GM: a new attack card was created. Applies masteries decided at attack time. */
 export async function onAttackCreated(message) {
   if (!engineActive() || !game.user?.isActiveGM || message?.type !== "attack") return;
+  if (flag(message, "extra") === "cleave") return; // the Cleave attack itself does not Cleave again
   const ctx = await attackContext(message);
-  if (!ctx || TIMING[ctx.mastery]?.on !== "attack") return;
+  if (!ctx || TIMING[ctx.mastery]?.on !== "attack" || ctx.mastery === "nick") return; // Nick is a button
   if (TIMING[ctx.mastery].needs === "hit" && !ctx.outcome.hit) return;
   if (TIMING[ctx.mastery].needs === "miss" && !ctx.outcome.miss) return;
   if (hasLine(message, ctx.mastery)) return;
@@ -600,6 +756,13 @@ export function renderMasteryUI(message, html) {
       box.append(row);
     }
     root.append(box);
+  }
+
+  if (message.type === "attack" && !root.querySelector?.(".wm5eam-nick") && nickAvailable(message)) {
+    const row = document.createElement("div");
+    row.className = "wm5eam-apply";
+    row.append(button(loc("nick"), "wm5eam-nick", () => nickAttack(message)));
+    root.append(row);
   }
 
   if (message.type === "damage" && game.user?.isGM && engineActive() && !root.querySelector?.(".wm5eam-apply")) {

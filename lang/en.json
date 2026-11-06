@@ -60,5 +60,11 @@
   "WM5EAM.push.directionTitle": "Push {target}: direction",
   "WM5EAM.push.directionHint": "House rule: pick the direction of the push.",
   "WM5EAM.push.away": "Straight away",
-  "WM5EAM.push.none": "Don't push"
+  "WM5EAM.push.none": "Don't push",
+  "WM5EAM.lines.nick": "Light attack (Nick)",
+  "WM5EAM.nick.title": "Nick: which Light weapon?",
+  "WM5EAM.nick.noWeapon": "Nick: no other equipped Light weapon for the extra attack.",
+  "WM5EAM.cleave.title": "Cleave: second creature",
+  "WM5EAM.cleave.hint": "Weapon mastery: make a second attack against a creature within 5 ft of the first and within your reach.",
+  "WM5EAM.cleave.none": "Don't cleave"
 }

@@ -1,10 +1,11 @@
-// WM5E Auto Masteries 2.8.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.9.0 for dnd5e 6.0.x on Foundry v14.
 // 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
 // 2.3.0: diagnostics go through usedtp Logger (scripts/diag.mjs).
 // 2.4.0: Error and Unclear buttons on weapon attack and damage cards (scripts/report.mjs).
 // 2.5.0: mastery engine per the 2024 PHB (scripts/engine/): Sap, Vex, Slow; GM Approve/Reject lines.
 // 2.7.0: Topple (GM Roll save) and Graze (damage card on a miss).
 // 2.8.0: Push (straight line, 5 or 10 ft, walls and tokens block) and its house rules.
+// 2.9.0: Cleave (second attack, own card, no positive modifier) and Nick (Light attack button).
 // Design for low load: no compendium document loads, light chat and combat hooks,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
 
@@ -356,6 +357,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 Hooks.once("init", () => {
   engine.registerEngineSettings();
   (CONFIG.queries ??= {})[engine.QUERY] = data => log().guard("mastery query", () => engine.handle(data), { job: data });
+  CONFIG.queries[engine.QUERY_EXTRA] = data => log().guard("extra attack", () => engine.performExtraAttack(data), { extra: data?.extra });
 });
 Hooks.once("ready", () => log().guard("mastery engine check", () => engine.warnIfOtherEngine()));
 // Live self-test, run by usedtp Logger 1.1.0+ once per new version of this module.
@@ -370,6 +372,10 @@ Hooks.on("createChatMessage", message => {
 // Must stay synchronous: it changes the roll config before the roll.
 Hooks.on("dnd5e.preRollAttackV2", config => {
   try { engine.onPreRollAttack(config); } catch (err) { log().error("mastery advantage check", err, { actor: config?.subject?.actor?.name ?? null }); }
+});
+// Must stay synchronous: it changes the damage parts before the roll.
+Hooks.on("dnd5e.preRollDamageV2", config => {
+  try { engine.onPreRollDamage(config); } catch (err) { log().error("cleave damage modifier", err); }
 });
 Hooks.on("dnd5e.rollAttackV2", (rolls, data) => log().guard("mastery after attack", () => engine.onRolledAttack(rolls, data), { actor: data?.subject?.actor?.name ?? null }));
 Hooks.on("dnd5e.applyDamage", (actor, amount, options) => {

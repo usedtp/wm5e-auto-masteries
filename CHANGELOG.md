@@ -3,6 +3,12 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.9.0] - 2026-11-06
+### Added
+- Cleave: on a melee hit, a second attack against a creature (allies included) within 5 ft of the first target and within your reach. One such creature: it attacks at once. Several: the attacking player picks. The extra attack gets its own use card; its damage drops a positive ability modifier. Once per turn. Reject deletes the extra cards.
+- Nick: a "Light attack (Nick)" button on the attack card, on the attacker's turn. It rolls the extra attack of the Light property with another equipped Light weapon, as part of the Attack action, in off-hand mode (no positive modifier on damage). Once per turn. Reject deletes it.
+- All 8 weapon masteries now follow the 2024 PHB. Live self-test covers Cleave and Nick.
+
 ## [2.8.0] - 2026-11-06
 ### Added
 - Push: on a hit, pushes a Large or smaller target straight away from the attacker, along the line from the attacker's center through the target's center. Counts squares the 2024 way (a diagonal square is 5 ft). Stops at the last open square: walls, other tokens and the scene edge block. When both 5 and 10 ft fit, the attacking player is asked; otherwise it goes as far as it can. Reject moves the token back.

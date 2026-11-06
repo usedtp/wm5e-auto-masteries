@@ -1,4 +1,4 @@
-import { rejectLine, runLineAction } from "./engine/engine.mjs";
+import { rejectLine, runLineAction, nickAvailable, nickAttack } from "./engine/engine.mjs";
 import { reportContext } from "./report.mjs";
 
 /*
@@ -23,7 +23,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: {
       abilities: { str: { value: 16 }, dex: { value: 10 }, con: { value: 14 } },
-      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club", "quarterstaff", "greatsword", "warhammer"] } } }
+      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club", "quarterstaff", "greatsword", "warhammer", "greataxe", "dagger"] } } }
     }
   });
   const goblin = await t.actor({
@@ -31,7 +31,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: { attributes: { ac: { calc: "flat", flat: 5 }, hp: { value: 200, max: 200 }, movement: { speeds: { walk: 30 } } } }
   });
-  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club", "Quarterstaff", "Greatsword", "Warhammer"]);
+  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club", "Quarterstaff", "Greatsword", "Warhammer", "Greataxe", "Dagger"]);
   await t.items(goblin, PACK, ["Club"]);
   const fighterTok = await t.token(fighter, { x: 200, y: 200 });
   const goblinTok = await t.token(goblin, { x: 300, y: 200 });
@@ -186,6 +186,44 @@ export async function masterySuite(t) {
     t.ok(/too large/.test(l.text), "line says too large");
     t.equal(goblinTok.x, start.x, "goblin did not move");
     await goblin.update({ "system.traits.size": "med" });
+  });
+
+  await t.step("Cleave: a hit attacks the only creature next to the target; damage drops the Str modifier; once per turn", async () => {
+    const gs = canvas.grid.size;
+    const second = await t.actor({ name: "Test Goblin B", type: "npc", prototypeToken: { actorLink: true }, system: { attributes: { ac: { calc: "flat", flat: 5 }, hp: { value: 50, max: 50 } } } });
+    const secondTok = await t.token(second, { x: goblinTok.x, y: goblinTok.y + gs });
+    const card = await attack(fighter, "Greataxe", goblinTok);
+    const l = await t.waitFor(() => line(card, "cleave"), { message: "Cleave line", timeout: 10000 });
+    t.ok(/Test Goblin B/.test(l.text), "second attack against the other goblin");
+    const cleave = await t.waitFor(() => game.messages.contents.find(m => m.type === "attack" && m.flags?.[MOD]?.extra === "cleave" && m.flags[MOD].fromId === card.id), { message: "Cleave attack card" });
+    t.equal(cleave.system.targets?.[0]?.name, "Test Goblin B", "Cleave card targets the second goblin");
+    const usageId = cleave._source?.system?.origin;
+    const el = document.body.querySelector(`[data-message-id="${usageId}"]`);
+    t.ok(el, "Cleave use card is in the chat log");
+    const axe = fighter.items.getName("Greataxe").system.activities.find(a => a.type === "attack");
+    await axe.rollDamage({ event: { target: el } }, { configure: false }, { data: { system: { origin: usageId } } });
+    const dmg = await t.waitFor(() => game.messages.contents.findLast(m => m.type === "damage" && m._source?.system?.origin === usageId), { message: "Cleave damage card" });
+    t.equal(dmg.rolls[0].total, dmg.rolls[0].dice.reduce((a, d) => a + d.total, 0), "Cleave damage is dice only");
+    const again = await attack(fighter, "Greataxe", goblinTok);
+    await t.waitFor(() => /already used/.test(line(again, "cleave")?.text ?? ""), { message: "second Cleave refused this turn" });
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => !game.messages.get(cleave.id), { message: "Cleave card deleted on Reject" });
+    await secondTok.delete();
+  });
+
+  await t.step("Nick: Light attack (Nick) rolls the other Light weapon off-hand, once per turn; Reject removes it", async () => {
+    await fighter.items.getName("Dagger").update({ "system.equipped": true });
+    await fighter.items.getName("Shortsword").update({ "system.equipped": true });
+    const card = await attack(fighter, "Dagger", goblinTok);
+    t.ok(nickAvailable(card), "Nick button available on the attacker's turn");
+    await press(card, "wm5eam-nick", () => nickAttack(card));
+    const extra = await t.waitFor(() => game.messages.contents.find(m => m.type === "attack" && m.flags?.[MOD]?.extra === "nick" && m.flags[MOD].fromId === card.id), { message: "Nick attack card" });
+    t.equal(extra.getAssociatedItem()?.name, "Shortsword", "Light attack with the shortsword");
+    t.equal(extra.system.mode, "offhand", "off-hand mode, so damage drops a positive modifier");
+    const l = await t.waitFor(() => line(card, "nick"), { message: "Nick line" });
+    t.ok(!nickAvailable(card), "once per turn");
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => !game.messages.get(extra.id), { message: "Nick card deleted on Reject" });
   });
 
   await t.step("Report: Error/Unclear context carries the engine and its lines", async () => {

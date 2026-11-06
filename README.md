@@ -41,10 +41,12 @@ Applies weapon masteries exactly as the 2024 Player's Handbook describes. Full r
 - **Result lines.** Each mastery adds a line to the attack card. The GM sees Approve and Reject. Reject reverses it. At the start of the attacker's next turn, open lines count as approved.
 - **Apply weapon mastery.** Slow and Vex apply when damage is applied with Apply Damage. If HP was changed by hand, the GM presses Apply weapon mastery on the damage card.
 
-Built so far: Sap, Vex, Slow, Topple, Graze, Push. Cleave and Nick follow.
+All 8 masteries are built: Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex.
 
 - **Topple:** the GM presses Roll save on the attack card. A failed save makes the target Prone.
 - **Graze:** a miss posts a Graze damage card; apply it with the normal Apply button.
+- **Cleave:** on a melee hit, the second attack is rolled for you against the only creature next to the target, or the attacking player picks one. It gets its own card; roll its damage from there.
+- **Nick:** press Light attack (Nick) on the attack card during your turn. It rolls your other equipped Light weapon as part of the Attack action.
 - **Push:** the attacking player picks 5 or 10 ft when both fit. Walls, tokens and the scene edge stop it. The GM must be viewing the scene (Foundry needs the canvas to check walls).
 
 Live self-test: with usedtp Logger 1.1.2 or later, the GM's browser plays a short hidden test combat once after each update of this module and reports the result (see usedtp Logger's README).
