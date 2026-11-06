@@ -9,6 +9,7 @@
 import { log } from "./diag.mjs";
 import { onRenderChatMessage } from "./report.mjs";
 import * as engine from "./engine/engine.mjs";
+import { masterySuite } from "./selftest.mjs";
 
 const MOD = "wm5e-auto-masteries";
 const PACK = "dnd5e.content24";
@@ -355,6 +356,11 @@ Hooks.once("init", () => {
   (CONFIG.queries ??= {})[engine.QUERY] = data => log().guard("mastery query", () => engine.handle(data), { job: data });
 });
 Hooks.once("ready", () => log().guard("mastery engine check", () => engine.warnIfOtherEngine()));
+// Live self-test, run by usedtp Logger 1.1.0+ once per new version of this module.
+Hooks.once("ready", () => {
+  const selfTest = (game.modules.get("usedtp-logger")?.api ?? globalThis.UsedtpLogger)?.selfTest;
+  try { selfTest?.register(MOD, masterySuite, { title: "WM5E Auto Masteries" }); } catch (err) { log().error("self-test register", err); }
+});
 Hooks.on("createChatMessage", message => {
   if (message?.type !== "attack") return;
   return log().guard("mastery on attack", () => engine.onAttackCreated(message), { messageId: message.id });
