@@ -11,12 +11,15 @@ export const TIMING = Object.freeze({
   graze: { on: "attack", needs: "miss" },
   vex: { on: "damage" },
   slow: { on: "damage" },
-  cleave: { on: "damage" },
+  cleave: { on: "attack", needs: "hit" },
   nick: { on: "attack", needs: "any" }
 });
 
 /** Masteries built so far. Others are left alone until their phase ships. */
-export const BUILT = new Set(["sap", "vex", "slow", "topple", "graze", "push"]);
+export const BUILT = new Set(["sap", "vex", "slow", "topple", "graze", "push", "cleave", "nick"]);
+
+/** Turn key for once-per-turn limits. */
+export const turnKey = stamp => stamp ? `${stamp.combatId}.${stamp.round}.${stamp.turn}` : null;
 
 /**
  * Hit or miss against one target. 2024 PHB: a natural 20 always hits, a natural 1 always misses.
@@ -90,6 +93,10 @@ export function lineText(mastery, data = {}) {
       if (data.notUsed) return `Push: not used.`;
       if (data.noScene) return `Push: the GM must be viewing this scene to push ${who}.`;
       return `Push: ${who} pushed ${data.feet} ft ${data.how ?? "straight away"}.`;
+    case "cleave":
+      if (data.used) return "Cleave: already used this turn.";
+      return `Cleave: second attack against ${data.second}.`;
+    case "nick": return `Nick: Light attack with ${data.weapon} as part of the Attack action. Bonus Action still free.`;
     case "graze": return `Graze: ${data.damage} ${data.type ?? ""} damage to ${who} on the miss. Apply it from the Graze card.`.replace("  ", " ");
     default: return `${mastery}: applied.`;
   }

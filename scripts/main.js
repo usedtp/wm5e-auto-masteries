@@ -356,6 +356,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
 Hooks.once("init", () => {
   engine.registerEngineSettings();
   (CONFIG.queries ??= {})[engine.QUERY] = data => log().guard("mastery query", () => engine.handle(data), { job: data });
+  CONFIG.queries[engine.QUERY_EXTRA] = data => log().guard("extra attack", () => engine.performExtraAttack(data), { extra: data?.extra });
 });
 Hooks.once("ready", () => log().guard("mastery engine check", () => engine.warnIfOtherEngine()));
 // Live self-test, run by usedtp Logger 1.1.0+ once per new version of this module.
@@ -370,6 +371,10 @@ Hooks.on("createChatMessage", message => {
 // Must stay synchronous: it changes the roll config before the roll.
 Hooks.on("dnd5e.preRollAttackV2", config => {
   try { engine.onPreRollAttack(config); } catch (err) { log().error("mastery advantage check", err, { actor: config?.subject?.actor?.name ?? null }); }
+});
+// Must stay synchronous: it changes the damage parts before the roll.
+Hooks.on("dnd5e.preRollDamageV2", config => {
+  try { engine.onPreRollDamage(config); } catch (err) { log().error("cleave damage modifier", err); }
 });
 Hooks.on("dnd5e.rollAttackV2", (rolls, data) => log().guard("mastery after attack", () => engine.onRolledAttack(rolls, data), { actor: data?.subject?.actor?.name ?? null }));
 Hooks.on("dnd5e.applyDamage", (actor, amount, options) => {

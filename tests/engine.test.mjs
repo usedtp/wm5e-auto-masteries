@@ -257,6 +257,29 @@ await E.onAttackCreated(g3);
 ok(!g3.flags[MOD]?.lines, "Graze: nothing when the modifier is 0");
 attacker.system.abilities.str.mod = 3;
 
+// Cleave damage: a positive ability modifier is dropped, a negative one stays; only for the Cleave card
+const cleaveCard = new Message({ id: "cc1", type: "usage", flags: { [MOD]: { extra: "cleave" } } }); messages.push(cleaveCard);
+const ev = { target: { closest: () => ({ dataset: { messageId: "cc1" } }) } };
+let cfg2 = { event: ev, rolls: [{ base: true, parts: ["1d12", "@mod"], data: { mod: 3 } }] };
+E.onPreRollDamage(cfg2);
+ok(cfg2.rolls[0].parts.join() === "1d12", "Cleave damage: positive modifier dropped");
+cfg2 = { event: ev, rolls: [{ base: true, parts: ["1d12", "@mod"], data: { mod: -1 } }] };
+E.onPreRollDamage(cfg2);
+ok(cfg2.rolls[0].parts.join() === "1d12,@mod", "Cleave damage: negative modifier kept");
+const normal = new Message({ id: "nc1", type: "usage" }); messages.push(normal);
+cfg2 = { event: { target: { closest: () => ({ dataset: { messageId: "nc1" } }) } }, rolls: [{ base: true, parts: ["1d12", "@mod"], data: { mod: 3 } }] };
+E.onPreRollDamage(cfg2);
+ok(cfg2.rolls[0].parts.join() === "1d12,@mod", "Normal damage: modifier untouched");
+
+// Nick: only other equipped Light weapons with an attack
+const lw = (id, props, equipped = true) => ({ id, type: "weapon", name: id, system: { properties: new Set(props), equipped, activities: [{ type: "attack" }] } });
+const nickActor = { items: [lw("dagger", ["lgt"]), lw("shortsword", ["lgt"]), lw("longsword", []), lw("sickle", ["lgt"], false)] };
+const picks = E.nickWeapons(nickActor, { id: "dagger" }).map(i => i.id);
+ok(picks.join() === "shortsword", "Nick: other equipped Light weapon only");
+
+// Once per turn key
+ok(rules.turnKey({ combatId: "c1", round: 2, turn: 1 }) === "c1.2.1" && rules.turnKey(null) === null, "turn key for once-per-turn");
+
 // No GM online: the job is skipped and logged to usedtp Logger
 game.user.isActiveGM = false; const gm = game.users.activeGM; game.users.activeGM = null;
 await E.runOnGM({ kind: "damage", messageId: "x" });
