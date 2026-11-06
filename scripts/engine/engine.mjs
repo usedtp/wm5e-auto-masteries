@@ -1,5 +1,6 @@
 import { log } from "../diag.mjs";
 import { TIMING, BUILT, attackOutcome, eligibleMastery, sourceExpires, lineText, toppleDC, grazeDamage } from "./rules.mjs";
+import { PUSHABLE, COMPASS, direction, planPath, choosePath, distances } from "./push.mjs";
 
 /*
  * Mastery engine: applies weapon masteries per the 2024 PHB (see SPEC-masteries.md).
@@ -34,6 +35,8 @@ export async function claim(doc, key) {
 const setting = (key, fallback) => { try { return game.settings.get(MOD, key); } catch (err) { return fallback; } };
 export const engineActive = () => !game.modules?.get(WM5E)?.active;
 const flag = (doc, key) => doc?.flags?.[MOD]?.[key];
+/** A house rule applies only when "Allow house rules" is on. */
+const house = key => !!setting("homebrew", false) && !!setting(key, false);
 
 /* ---------- Settings ---------- */
 
@@ -42,6 +45,12 @@ export function registerEngineSettings() {
     name: "WM5EAM.homebrew.name", hint: "WM5EAM.homebrew.hint",
     scope: "world", config: true, type: Boolean, default: false
   });
+  for (const key of ["pushDirection", "pushSlide", "pushFull"]) {
+    game.settings.register(MOD, key, {
+      name: `WM5EAM.${key}.name`, hint: `WM5EAM.${key}.hint`,
+      scope: "world", config: true, type: Boolean, default: false
+    });
+  }
   game.settings.register(MOD, "npcMasteries", {
     name: "WM5EAM.npcMasteries.name", hint: "WM5EAM.npcMasteries.hint",
     scope: "world", config: true, type: String, default: "off",
@@ -250,6 +259,8 @@ async function applyMastery(mastery, { attackMessage, attacker, target, targetAc
     return applyTopple({ id, attackMessage, attacker, target, targetActor, stamp });
   } else if (mastery === "graze") {
     return applyGraze({ id, attackMessage, attacker, target, targetActor, item, stamp });
+  } else if (mastery === "push") {
+    return applyPush({ id, attackMessage, attacker, target, targetActor, stamp });
   } else return null;
   await addLine(attackMessage, {
     id, mastery, status: "applied", applied: stamp,
@@ -315,6 +326,111 @@ async function applyGraze({ id, attackMessage, attacker, target, targetActor, it
   });
   log().info("graze damage posted", { messageId: attackMessage.id, amount, type });
   return card;
+}
+
+/* ---------- Push ---------- */
+
+const PROMPT_MS = 60000;
+
+/** The user who should answer the attacker's choices: the player who rolled, else this GM. */
+function askerFor(attackMessage) {
+  const author = attackMessage.author;
+  return author?.active && !author.isGM ? author : game.user;
+}
+
+/** Ask a user a button question. Null on timeout, close or error. */
+async function ask(user, { title, content, buttons }) {
+  const { DialogV2 } = foundry.applications.api;
+  const config = { window: { title }, content, buttons, rejectClose: false };
+  try {
+    const answer = DialogV2.query ? DialogV2.query(user, "wait", config) : DialogV2.wait(config);
+    return await Promise.race([answer, new Promise(r => setTimeout(() => r(null), PROMPT_MS))]);
+  } catch (err) {
+    log().warn("push prompt failed", { user: user?.name, error: err?.message });
+    return null;
+  }
+}
+
+const centerOf = (tok, gs) => ({ x: tok.x + (tok.width * gs) / 2, y: tok.y + (tok.height * gs) / 2 });
+
+/** Center of the token position nearest a point (square grids snap; gridless keeps the point). */
+function snapCenterFor(tok, point) {
+  const gs = canvas.grid.size;
+  const w = tok.width * gs, h = tok.height * gs;
+  if (!canvas.grid.type) return point;
+  const x = Math.round((point.x - w / 2) / gs) * gs, y = Math.round((point.y - h / 2) / gs) * gs;
+  return { x: x + w / 2, y: y + h / 2 };
+}
+
+/** Open square: inside the scene, no wall on the way, no other token there. */
+function openFor(tok) {
+  const gs = canvas.grid.size;
+  const w = tok.width * gs, h = tok.height * gs;
+  const rect = canvas.dimensions?.sceneRect;
+  return (from, to) => {
+    const x = to.x - w / 2, y = to.y - h / 2;
+    if (rect && (x < rect.x || y < rect.y || x + w > rect.x + rect.width || y + h > rect.y + rect.height)) return false;
+    if (CONFIG.Canvas.polygonBackends.move.testCollision(from, to, { type: "move", mode: "any" })) return false;
+    for (const other of canvas.scene.tokens) {
+      if (other.id === tok.id) continue;
+      const ox = other.x, oy = other.y, ow = other.width * gs, oh = other.height * gs;
+      if (x < ox + ow - 1 && x + w > ox + 1 && y < oy + oh - 1 && y + h > oy + 1) return false;
+    }
+    return true;
+  };
+}
+
+/** Push: straight away from the attacker, 5 or 10 ft, stopping at the last open square. */
+async function applyPush({ id, attackMessage, attacker, target, targetActor, stamp }) {
+  const name = target?.name ?? targetActor.name;
+  const line = data => addLine(attackMessage, { id, mastery: "push", status: data.status ?? "applied", applied: stamp, text: lineText("push", { target: name, ...data }), undo: data.undo });
+  const size = targetActor.system?.traits?.size;
+  if (size && !PUSHABLE.has(size)) return line({ tooLarge: true, size: CONFIG.DND5E?.actorSizes?.[size]?.label ?? size, status: "approved" });
+
+  const targetTok = target?.token ? await fromUuid(target.token) : null;
+  const scene = targetTok?.parent;
+  const attackerTok = scene?.tokens?.get(attackMessage.speaker?.token) ?? scene?.tokens?.find(t => t.actor?.uuid === attacker.uuid);
+  if (!targetTok || !attackerTok) { log().warn("push needs both tokens on one scene", { messageId: attackMessage.id }); return null; }
+  if (canvas.scene?.id !== scene.id) return line({ noScene: true, status: "approved" });
+
+  const gs = canvas.grid.size;
+  const asker = askerFor(attackMessage);
+  let dir = direction(centerOf(attackerTok, gs), centerOf(targetTok, gs));
+  let how = "straight away";
+  if (house("pushDirection")) {
+    const pick = await ask(asker, {
+      title: game.i18n.format("WM5EAM.push.directionTitle", { target: name }),
+      content: `<p>${game.i18n.localize("WM5EAM.push.directionHint")}</p>`,
+      buttons: [{ action: "away", label: game.i18n.localize("WM5EAM.push.away"), default: true }, ...Object.keys(COMPASS).map(k => ({ action: k, label: k }))]
+    });
+    if (pick && COMPASS[pick]) { dir = COMPASS[pick]; how = `to the ${pick}`; }
+  }
+  if (!dir) return line({ noRoom: true, status: "approved" });
+
+  const center = centerOf(targetTok, gs);
+  const plan = d => planPath({ center, dir: d, size: gs, snapCenter: p => snapCenterFor(targetTok, p), isOpen: openFor(targetTok) });
+  const { path, slid } = choosePath({ dir, slide: house("pushSlide"), plan });
+  if (!path.length) return line({ noRoom: true, status: "approved" });
+  if (slid) how += ", sliding 45 degrees";
+
+  const feet = distances(path, canvas.grid.distance);
+  let pick = feet.at(-1);
+  if (feet.length > 1 && !house("pushFull")) {
+    const answer = await ask(asker, {
+      title: game.i18n.format("WM5EAM.push.distanceTitle", { target: name }),
+      content: `<p>${game.i18n.localize("WM5EAM.push.distanceHint")}</p>`,
+      buttons: [...feet.slice().reverse().map((f, i) => ({ action: String(f), label: `${f} ft`, default: i === 0 })), { action: "0", label: game.i18n.localize("WM5EAM.push.none") }]
+    });
+    if (answer !== null && answer !== undefined) pick = Number(answer);
+  }
+  if (!pick) return line({ notUsed: true, status: "approved" });
+
+  const dest = path[feet.indexOf(pick)];
+  const before = { x: targetTok.x, y: targetTok.y };
+  await targetTok.update({ x: dest.x - (targetTok.width * gs) / 2, y: dest.y - (targetTok.height * gs) / 2 }, { animate: true });
+  await line({ feet: pick, how, undo: { type: "move", tokenUuid: targetTok.uuid, x: before.x, y: before.y } });
+  log().info("push applied", { messageId: attackMessage.id, feet: pick, slid });
+  return null;
 }
 
 /** Context shared by attack- and damage-time decisions. Null when nothing should happen. */

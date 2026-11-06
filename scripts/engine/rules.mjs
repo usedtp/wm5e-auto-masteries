@@ -16,7 +16,7 @@ export const TIMING = Object.freeze({
 });
 
 /** Masteries built so far. Others are left alone until their phase ships. */
-export const BUILT = new Set(["sap", "vex", "slow", "topple", "graze"]);
+export const BUILT = new Set(["sap", "vex", "slow", "topple", "graze", "push"]);
 
 /**
  * Hit or miss against one target. 2024 PHB: a natural 20 always hits, a natural 1 always misses.
@@ -84,6 +84,12 @@ export function lineText(mastery, data = {}) {
       return data.failed
         ? `Topple: ${who} failed the DC ${data.dc} Constitution save (${data.total}) and is Prone.`
         : `Topple: ${who} made the DC ${data.dc} Constitution save (${data.total}).`;
+    case "push":
+      if (data.tooLarge) return `Push: ${who} is too large to push (${data.size}).`;
+      if (data.noRoom) return `Push: no room to push ${who}.`;
+      if (data.notUsed) return `Push: not used.`;
+      if (data.noScene) return `Push: the GM must be viewing this scene to push ${who}.`;
+      return `Push: ${who} pushed ${data.feet} ft ${data.how ?? "straight away"}.`;
     case "graze": return `Graze: ${data.damage} ${data.type ?? ""} damage to ${who} on the miss. Apply it from the Graze card.`.replace("  ", " ");
     default: return `${mastery}: applied.`;
   }

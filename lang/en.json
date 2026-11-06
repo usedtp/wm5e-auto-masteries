@@ -48,5 +48,17 @@
   "WM5EAM.engine.otherActive": "WM5E Auto Masteries: weapon masteries follow the 2024 PHB only when Automated Masteries 5e is off. Turn it off in Manage Modules. Until then, Automated Masteries 5e applies them.",
   "WM5EAM.lines.rollSave": "Roll save",
   "WM5EAM.lines.toppleNotice": "Topple: roll {target}'s DC {dc} Constitution save on the attack card.",
-  "WM5EAM.lines.grazeFlavor": "Graze (weapon mastery)"
+  "WM5EAM.lines.grazeFlavor": "Graze (weapon mastery)",
+  "WM5EAM.pushDirection.name": "House rule: Push, the attacker picks the direction",
+  "WM5EAM.pushDirection.hint": "PHB: straight away from the attacker. With this on, the attacker picks one of 8 directions. Needs 'Allow house rules'.",
+  "WM5EAM.pushSlide.name": "House rule: Push slides 45 degrees when blocked",
+  "WM5EAM.pushSlide.hint": "PHB: the push stops at the last open square. With this on, a blocked push tries 45 degrees left or right. Needs 'Allow house rules'.",
+  "WM5EAM.pushFull.name": "House rule: Push always the full 10 ft",
+  "WM5EAM.pushFull.hint": "PHB: up to 10 ft, the attacker chooses. With this on, the push goes as far as it can without asking. Needs 'Allow house rules'.",
+  "WM5EAM.push.distanceTitle": "Push {target}",
+  "WM5EAM.push.distanceHint": "Weapon mastery: push the target straight away from you, up to 10 ft.",
+  "WM5EAM.push.directionTitle": "Push {target}: direction",
+  "WM5EAM.push.directionHint": "House rule: pick the direction of the push.",
+  "WM5EAM.push.away": "Straight away",
+  "WM5EAM.push.none": "Don't push"
 }

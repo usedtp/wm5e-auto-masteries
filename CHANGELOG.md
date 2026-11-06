@@ -3,6 +3,12 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.8.0] - 2026-11-06
+### Added
+- Push: on a hit, pushes a Large or smaller target straight away from the attacker, along the line from the attacker's center through the target's center. Counts squares the 2024 way (a diagonal square is 5 ft). Stops at the last open square: walls, other tokens and the scene edge block. When both 5 and 10 ft fit, the attacking player is asked; otherwise it goes as far as it can. Reject moves the token back.
+- House rules (need "Allow house rules"): the attacker picks the direction; slide 45 degrees when blocked; always the full 10 ft.
+- Live self-test covers a 10 ft push, a wall stop at 5 ft, and a Huge target.
+
 ## [2.7.1] - 2026-11-06
 ### Fixed
 - Live self-test: the Graze step now sets the test goblin's AC as a whole object. dnd5e 6 ignored the flat-only update, so the miss never happened.

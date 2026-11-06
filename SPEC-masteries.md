@@ -36,6 +36,7 @@ Source of truth for the mastery engine in WM5E Auto Masteries. Rules follow the 
 2. Slow and Vex fire automatically only when damage goes through Apply Damage. For manual HP edits, the damage card has a GM-only "Apply weapon mastery" button beside dnd5e's apply-damage buttons. It applies the mastery for its normal duration.
 3. Topple's save is a prompt to the GM.
 4. Combat-only, see Ground rules.
+5. Push needs the GM to be viewing the scene, because Foundry checks walls on the canvas.
 
 ## Build order
 1. Core engine: switch-over, settings, combat gate, card lines, GM Approve/Reject, once-per-turn store.

@@ -23,7 +23,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: {
       abilities: { str: { value: 16 }, dex: { value: 10 }, con: { value: 14 } },
-      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club", "quarterstaff", "greatsword"] } } }
+      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club", "quarterstaff", "greatsword", "warhammer"] } } }
     }
   });
   const goblin = await t.actor({
@@ -31,7 +31,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: { attributes: { ac: { calc: "flat", flat: 5 }, hp: { value: 200, max: 200 }, movement: { speeds: { walk: 30 } } } }
   });
-  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club", "Quarterstaff", "Greatsword"]);
+  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club", "Quarterstaff", "Greatsword", "Warhammer"]);
   await t.items(goblin, PACK, ["Club"]);
   const fighterTok = await t.token(fighter, { x: 200, y: 200 });
   const goblinTok = await t.token(goblin, { x: 300, y: 200 });
@@ -148,6 +148,44 @@ export async function masterySuite(t) {
     await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
     await t.waitFor(() => !game.messages.get(graze.id), { message: "Graze card deleted" });
     await goblin.update({ "system.attributes.ac": { calc: "flat", flat: 5 } });
+  });
+
+  await t.step("Push: 10 ft straight away when the attacker picks 10 ft; Reject puts it back", async () => {
+    const gs = canvas.grid.size;
+    const start = { x: goblinTok.x, y: goblinTok.y };
+    const card = await attack(fighter, "Warhammer", goblinTok);
+    const ten = await t.waitFor(() => document.body.querySelector('.application button[data-action="10"]'), { message: "5 or 10 ft prompt" });
+    ten.click();
+    await t.waitFor(() => goblinTok.x === start.x + 2 * gs && goblinTok.y === start.y, { message: "goblin 10 ft east" });
+    const l = await t.waitFor(() => line(card, "push"), { message: "Push line" });
+    t.ok(/10 ft straight away/.test(l.text), "line says 10 ft straight away");
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => goblinTok.x === start.x && goblinTok.y === start.y, { message: "goblin back after Reject" });
+  });
+
+  await t.step("Push: a wall after 5 ft stops it at 5 ft, no prompt", async () => {
+    const gs = canvas.grid.size;
+    const start = { x: goblinTok.x, y: goblinTok.y };
+    const wallX = start.x + 2 * gs;
+    const [wall] = await canvas.scene.createEmbeddedDocuments("Wall", [{ c: [wallX, start.y - gs, wallX, start.y + 2 * gs] }]);
+    await t.waitFor(() => canvas.walls.placeables.some(w => w.document.id === wall.id), { message: "wall drawn" });
+    const card = await attack(fighter, "Warhammer", goblinTok);
+    await t.waitFor(() => goblinTok.x === start.x + gs, { message: "goblin 5 ft east" });
+    const l = await t.waitFor(() => line(card, "push"), { message: "Push line" });
+    t.ok(/5 ft/.test(l.text), "line says 5 ft");
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => goblinTok.x === start.x, { message: "goblin back" });
+    await wall.delete();
+  });
+
+  await t.step("Push: a Huge target is not pushed", async () => {
+    const start = { x: goblinTok.x, y: goblinTok.y };
+    await goblin.update({ "system.traits.size": "huge" });
+    const card = await attack(fighter, "Warhammer", goblinTok);
+    const l = await t.waitFor(() => line(card, "push"), { message: "Push line" });
+    t.ok(/too large/.test(l.text), "line says too large");
+    t.equal(goblinTok.x, start.x, "goblin did not move");
+    await goblin.update({ "system.traits.size": "med" });
   });
 
   await t.step("Report: Error/Unclear context carries the engine and its lines", async () => {
