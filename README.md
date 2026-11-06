@@ -31,6 +31,13 @@ Run once as a Script macro to fix actors and items that existed before install:
 await game.modules.get("wm5e-auto-masteries").api.sweep()
 ```
 
+## Reporting a mastery problem
+Every weapon attack and damage card ends with "Mastery wrong or unclear?" and two buttons, the same as Roll Lessons:
+- **Error**: a mastery didn't happen, the wrong one was used, or its effect was wrong.
+- **Unclear**: it's not clear whether a mastery should have happened, or what it did.
+
+The player ticks what happened and can add a comment. The report records the weapon, its mastery and base item, the mastery used on the roll, whether the character knows it, whether Automated Masteries 5e acted, the auto-trigger setting and module versions. Reports show in usedtp Logger > Open logs. Turn the buttons off with the "Error and Unclear buttons on weapon cards" setting.
+
 ## Mastery limits (2024 PHB)
 | Class | Weapon kinds |
 | --- | --- |

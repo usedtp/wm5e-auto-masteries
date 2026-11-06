@@ -48,7 +48,7 @@ jobs:
           ' module.json > module.tmp && mv module.tmp module.json
       - name: Package
         if: steps.v.outputs.skip != 'true'
-        run: zip -r module.zip module.json scripts lang README.md CHANGELOG.md LICENSE
+        run: zip -r module.zip module.json scripts styles lang README.md CHANGELOG.md LICENSE
       - name: Publish release
         if: steps.v.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2

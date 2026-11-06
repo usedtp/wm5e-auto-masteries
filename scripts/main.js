@@ -1,10 +1,12 @@
-// WM5E Auto Masteries 2.3.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.4.0 for dnd5e 6.0.x on Foundry v14.
 // 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
 // 2.3.0: diagnostics go through usedtp Logger (scripts/diag.mjs).
-// Design for low load: no compendium document loads, no render hooks,
+// 2.4.0: Error and Unclear buttons on weapon attack and damage cards (scripts/report.mjs).
+// Design for low load: no compendium document loads, one light chat render hook,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
 
 import { log } from "./diag.mjs";
+import { onRenderChatMessage } from "./report.mjs";
 
 const MOD = "wm5e-auto-masteries";
 const PACK = "dnd5e.content24";
@@ -333,6 +335,15 @@ Hooks.once("init", () => {
     choices: { on: "WM5EAM.autoTrigger.on", off: "WM5EAM.autoTrigger.off", players: "WM5EAM.autoTrigger.players" },
     onChange: () => applyAutoTrigger()
   });
+  game.settings.register(MOD, "reportButtons", {
+    name: "WM5EAM.reportButtons.name", hint: "WM5EAM.reportButtons.hint",
+    scope: "world", config: true, type: Boolean, default: true
+  });
+});
+
+// Error and Unclear buttons on weapon attack and damage cards. A failure here never breaks the chat card.
+Hooks.on("renderChatMessageHTML", (message, html) => {
+  try { onRenderChatMessage(message, html); } catch (err) { log().error("report buttons failed", err, { messageId: message?.id }); }
 });
 
 Hooks.once("ready", () => {
