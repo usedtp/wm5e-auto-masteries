@@ -13,7 +13,7 @@ const logs = [];
 class Effect {
   constructor(parent, data) { this.parent = parent; Object.assign(this, structuredClone(data)); this.id = `e${n++}`; this.uuid = `${parent.uuid}.ActiveEffect.${this.id}`; this.flags ??= {}; docs.set(this.uuid, this); }
   get isOwner() { return true; }
-  async setFlag(m, k, v) { (this.flags[m] ??= {})[k] = structuredClone(v); }
+  async setFlag(m, k, v) { const o = (this.flags[m] ??= {}); const p = k.split("."); let c = o; p.slice(0, -1).forEach(x => c = c[x] ??= {}); c[p.at(-1)] = structuredClone(v); }
   async delete() { this.parent.effects = this.parent.effects.filter(e => e !== this); docs.delete(this.uuid); }
 }
 class Actor {
@@ -22,7 +22,7 @@ class Actor {
 }
 class Message {
   constructor(data) { Object.assign(this, data); this.flags ??= {}; this._source = { system: { activity: { uuid: data.activityUuid ?? "Act.1" } } }; this.timestamp ??= n++; }
-  async setFlag(m, k, v) { (this.flags[m] ??= {})[k] = structuredClone(v); }
+  async setFlag(m, k, v) { const o = (this.flags[m] ??= {}); const p = k.split("."); let c = o; p.slice(0, -1).forEach(x => c = c[x] ??= {}); c[p.at(-1)] = structuredClone(v); }
   getAssociatedItem() { return this.item; }
   getAssociatedActor() { return this.actor; }
   getOriginatingMessage() { return this.origin ?? this; }
@@ -191,5 +191,20 @@ const mt = new Message({ id: `m${n++}`, type: "attack", item: weapon("sap"), act
 messages.push(mt);
 await E.onAttackCreated(mt);
 ok(logs.some(l => l[0] === "unclear" && String(l[1]).startsWith("multi-target:")), "Multiple targets: no mastery, reported as unclear");
+
+// Rejected line is not re-applied by later damage
+const s6 = attackMsg("slow", 18, ogre);
+const d6 = damageMsg(s6);
+await E.onDamageLanded({ messageId: d6.id, targetUuid: ogre.uuid });
+await E.rejectLine(s6, s6.flags[MOD].lines[0].id);
+await E.onDamageLanded({ messageId: d6.id, targetUuid: ogre.uuid });
+ok(!fx(ogre, "slow") && s6.flags[MOD].lines.length === 1, "Rejected mastery stays rejected on later damage");
+
+// Two browsers of the same GM: only the one whose claim sticks acts
+const doc = { flags: {}, async setFlag(m, k, v) { const p = k.split("."); let c = (this.flags[m] ??= {}); p.slice(0, -1).forEach(x => c = c[x] ??= {}); c[p.at(-1)] = v; } };
+const first = E.claim(doc, "x");
+await doc.setFlag(MOD, "claims.x", "other-browser");
+ok(await first === false, "Claim lost to another browser: does nothing");
+ok(await E.claim(doc, "y") === true, "Claim won: acts");
 
 console.log(`engine tests: ${pass} passed`);

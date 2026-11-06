@@ -3,6 +3,11 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.5.1] - 2026-11-06
+### Fixed
+- A GM logged in from two browsers no longer applies a mastery twice. One browser claims each decision.
+- A rejected mastery line is not re-applied when damage is applied again to the same attack.
+
 ## [2.5.0] - 2026-11-06
 ### Added
 - Weapon mastery automation per the 2024 PHB: Sap, Vex, Slow. Idle while Automated Masteries 5e is active.

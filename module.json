@@ -2,7 +2,7 @@
   "id": "wm5e-auto-masteries",
   "title": "WM5E Auto Masteries",
   "description": "Helper for Automated Masteries 5e. Sets each weapon's 2024 PHB mastery and base item, links the mastery rule in the weapon description, warns the GM when a character knows more masteries than the PHB allows, and repairs over-limit characters. Lets the GM control auto-triggering for every user.",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "authors": [
     {
       "name": "Mick Kitor"

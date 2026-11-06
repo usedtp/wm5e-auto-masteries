@@ -16,6 +16,21 @@ const NAME = { sap: "Sap (weapon mastery)", vex: "Vex (weapon mastery)", slow: "
 const IMG = { sap: "icons/svg/downgrade.svg", vex: "icons/svg/target.svg", slow: "icons/svg/net.svg" };
 const RECENT = 200;
 
+const CLIENT = Math.random().toString(36).slice(2, 10);
+const CLAIM_MS = 400;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/**
+ * One browser acts, even when the same GM user is logged in twice (both count as the active GM).
+ * Each writes its token to the document, waits for the writes to settle, and only the token that stuck proceeds.
+ */
+export async function claim(doc, key) {
+  if (!doc?.setFlag) return true;
+  await doc.setFlag(MOD, `claims.${key}`, CLIENT);
+  await wait(CLAIM_MS);
+  return doc.flags?.[MOD]?.claims?.[key] === CLIENT;
+}
+
 const setting = (key, fallback) => { try { return game.settings.get(MOD, key); } catch (err) { return fallback; } };
 export const engineActive = () => !game.modules?.get(WM5E)?.active;
 const flag = (doc, key) => doc?.flags?.[MOD]?.[key];
@@ -155,7 +170,8 @@ async function addLine(attackMessage, line) {
   await attackMessage.setFlag(MOD, "lines", lines);
 }
 
-const hasLine = (message, mastery) => (flag(message, "lines") ?? []).some(l => l.mastery === mastery && l.status !== "rejected");
+/** One decision per attack per mastery: a rejected line is not re-applied by later damage. */
+const hasLine = (message, mastery) => (flag(message, "lines") ?? []).some(l => l.mastery === mastery);
 
 export async function setLineStatus(message, lineId, status) {
   const lines = (flag(message, "lines") ?? []).map(l => l.id === lineId ? { ...l, status } : l);
@@ -220,6 +236,8 @@ export async function onAttackCreated(message) {
   if (TIMING[ctx.mastery].needs === "hit" && !ctx.outcome.hit) return;
   if (TIMING[ctx.mastery].needs === "miss" && !ctx.outcome.miss) return;
   if (hasLine(message, ctx.mastery)) return;
+  if (!(await claim(message, `${ctx.mastery}`))) return;
+  if (hasLine(message, ctx.mastery)) return;
   await applyMastery(ctx.mastery, ctx);
 }
 
@@ -234,6 +252,8 @@ export async function onDamageLanded({ messageId, targetUuid, manual = false }) 
     const hurt = await fromUuid(targetUuid);
     if (!sameTarget(ctx.target, hurt)) return null;
   }
+  if (hasLine(attack, ctx.mastery)) return null;
+  if (!(await claim(attack, `${ctx.mastery}`))) return null;
   if (hasLine(attack, ctx.mastery)) return null;
   return applyMastery(ctx.mastery, ctx);
 }
@@ -282,6 +302,7 @@ export async function onTurnChange(combat, prior, current) {
   if (prior?.combatantId) events.push({ kind: "end", combatId: combat.id, round: prior.round, turn: prior.turn, combatantId: prior.combatantId });
   if (current?.combatantId) events.push({ kind: "start", combatId: combat.id, round: current.round, turn: current.turn, combatantId: current.combatantId });
   if (!events.length) return;
+  if (!(await claim(combat, `turn-${current?.round ?? 0}-${current?.turn ?? 0}`))) return;
 
   const actors = new Map();
   for (const c of combat.combatants) if (c.actor) actors.set(c.actor.uuid, c.actor);
