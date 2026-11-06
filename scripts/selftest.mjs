@@ -1,4 +1,4 @@
-import { rejectLine } from "./engine/engine.mjs";
+import { rejectLine, runLineAction } from "./engine/engine.mjs";
 import { reportContext } from "./report.mjs";
 
 /*
@@ -23,7 +23,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: {
       abilities: { str: { value: 16 }, dex: { value: 10 }, con: { value: 14 } },
-      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club"] } } }
+      traits: { weaponProf: { mastery: { value: ["mace", "shortsword", "club", "quarterstaff", "greatsword"] } } }
     }
   });
   const goblin = await t.actor({
@@ -31,7 +31,7 @@ export async function masterySuite(t) {
     prototypeToken: { actorLink: true },
     system: { attributes: { ac: { calc: "flat", flat: 5 }, hp: { value: 200, max: 200 }, movement: { speeds: { walk: 30 } } } }
   });
-  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club"]);
+  await t.items(fighter, PACK, ["Mace", "Shortsword", "Club", "Quarterstaff", "Greatsword"]);
   await t.items(goblin, PACK, ["Club"]);
   const fighterTok = await t.token(fighter, { x: 200, y: 200 });
   const goblinTok = await t.token(goblin, { x: 300, y: 200 });
@@ -94,6 +94,7 @@ export async function masterySuite(t) {
     slowCard = await attack(fighter, "Club", goblinTok);
     await damage(slowCard, goblin);
     await t.waitFor(() => effect(goblin, "slow"), { message: "Slow effect" });
+    await t.waitFor(() => line(slowCard, "slow"), { message: "Slow line" });
     t.equal(goblin.system.attributes.movement.speeds.walk, 20, "walk speed");
   });
 
@@ -115,6 +116,36 @@ export async function masterySuite(t) {
     await combat.nextTurn();
     await t.waitFor(() => !effect(goblin, "sap"), { message: "Sap expired" });
     await t.waitFor(() => line(card, "sap")?.status === "approved", { message: "line approved" });
+  });
+
+  /** Click a GM button on a card line, or call the engine if the card is not drawn in this browser. */
+  async function press(card, cls, fallback) {
+    const button = document.querySelector(`[data-message-id="${card.id}"] .${cls}`);
+    if (button) button.click(); else await fallback();
+  }
+
+  await t.step("Topple: hit gives the GM a Roll save button at DC 8 + Str + PB", async () => {
+    const card = await attack(fighter, "Quarterstaff", goblinTok);
+    const l = await t.waitFor(() => line(card, "topple"), { message: "Topple line" });
+    const dc = 8 + fighter.system.abilities.str.mod + fighter.system.attributes.prof;
+    t.equal(l.save?.dc, dc, "Topple DC");
+    t.ok(l.actions?.some(a => a.id === "rollSave"), "Roll save button");
+    await press(card, "wm5eam-action-rollSave", () => runLineAction(card, l.id, "rollSave"));
+    await t.waitFor(() => goblin.statuses.has("prone"), { message: "goblin Prone after failed save" });
+    await t.waitFor(() => /failed/.test(line(card, "topple")?.text ?? ""), { message: "line shows the failed save" });
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => !goblin.statuses.has("prone"), { message: "Reject removes Prone" });
+  });
+
+  await t.step("Graze: a miss posts a damage card equal to the Str modifier; Reject deletes it", async () => {
+    await goblin.update({ "system.attributes.ac.flat": 30 });
+    const card = await attack(fighter, "Greatsword", goblinTok);
+    const l = await t.waitFor(() => line(card, "graze"), { message: "Graze line" });
+    const graze = await t.waitFor(() => game.messages.contents.find(m => m.flags?.[MOD]?.extra === "graze" && m.flags[MOD].attackId === card.id), { message: "Graze damage card" });
+    t.equal(graze.rolls[0].total, fighter.system.abilities.str.mod, "Graze damage");
+    await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
+    await t.waitFor(() => !game.messages.get(graze.id), { message: "Graze card deleted" });
+    await goblin.update({ "system.attributes.ac.flat": 5 });
   });
 
   await t.step("Report: Error/Unclear context carries the engine and its lines", async () => {

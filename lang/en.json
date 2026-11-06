@@ -45,5 +45,8 @@
   "WM5EAM.lines.approved": "Approved",
   "WM5EAM.lines.rejected": "Rejected",
   "WM5EAM.lines.applyMastery": "Apply weapon mastery",
-  "WM5EAM.engine.otherActive": "WM5E Auto Masteries: weapon masteries follow the 2024 PHB only when Automated Masteries 5e is off. Turn it off in Manage Modules. Until then, Automated Masteries 5e applies them."
+  "WM5EAM.engine.otherActive": "WM5E Auto Masteries: weapon masteries follow the 2024 PHB only when Automated Masteries 5e is off. Turn it off in Manage Modules. Until then, Automated Masteries 5e applies them.",
+  "WM5EAM.lines.rollSave": "Roll save",
+  "WM5EAM.lines.toppleNotice": "Topple: roll {target}'s DC {dc} Constitution save on the attack card.",
+  "WM5EAM.lines.grazeFlavor": "Graze (weapon mastery)"
 }

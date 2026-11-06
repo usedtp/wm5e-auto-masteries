@@ -41,7 +41,10 @@ Applies weapon masteries exactly as the 2024 Player's Handbook describes. Full r
 - **Result lines.** Each mastery adds a line to the attack card. The GM sees Approve and Reject. Reject reverses it. At the start of the attacker's next turn, open lines count as approved.
 - **Apply weapon mastery.** Slow and Vex apply when damage is applied with Apply Damage. If HP was changed by hand, the GM presses Apply weapon mastery on the damage card.
 
-Built so far: Sap, Vex, Slow. Topple, Graze, Push, Cleave and Nick follow.
+Built so far: Sap, Vex, Slow, Topple, Graze. Push, Cleave and Nick follow.
+
+- **Topple:** the GM presses Roll save on the attack card. A failed save makes the target Prone.
+- **Graze:** a miss posts a Graze damage card; apply it with the normal Apply button.
 
 Live self-test: with usedtp Logger 1.1.2 or later, the GM's browser plays a short hidden test combat once after each update of this module and reports the result (see usedtp Logger's README).
 

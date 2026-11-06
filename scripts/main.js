@@ -1,8 +1,9 @@
-// WM5E Auto Masteries 2.6.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.7.0 for dnd5e 6.0.x on Foundry v14.
 // 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
 // 2.3.0: diagnostics go through usedtp Logger (scripts/diag.mjs).
 // 2.4.0: Error and Unclear buttons on weapon attack and damage cards (scripts/report.mjs).
 // 2.5.0: mastery engine per the 2024 PHB (scripts/engine/): Sap, Vex, Slow; GM Approve/Reject lines.
+// 2.7.0: Topple (GM Roll save) and Graze (damage card on a miss).
 // Design for low load: no compendium document loads, light chat and combat hooks,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
 

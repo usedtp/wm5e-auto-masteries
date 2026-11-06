@@ -16,7 +16,7 @@ export const TIMING = Object.freeze({
 });
 
 /** Masteries built so far. Others are left alone until their phase ships. */
-export const BUILT = new Set(["sap", "vex", "slow"]);
+export const BUILT = new Set(["sap", "vex", "slow", "topple", "graze"]);
 
 /**
  * Hit or miss against one target. 2024 PHB: a natural 20 always hits, a natural 1 always misses.
@@ -65,6 +65,12 @@ export function sourceExpires(source, event) {
   return !(a.round === event.round && a.turn === event.turn);
 }
 
+/** Topple save DC: 8 + the ability modifier used for the attack + Proficiency Bonus. */
+export const toppleDC = (abilityMod, prof) => 8 + (Number(abilityMod) || 0) + (Number(prof) || 0);
+
+/** Graze damage: the attack's ability modifier, nothing when it is 0 or less. */
+export const grazeDamage = abilityMod => Math.max(0, Number(abilityMod) || 0);
+
 /** Line text for the attack card. Kept short; the GM approves or rejects it. */
 export function lineText(mastery, data = {}) {
   const who = data.target ? `${data.target}` : "Target";
@@ -72,6 +78,13 @@ export function lineText(mastery, data = {}) {
     case "sap": return `Sap: ${who} has Disadvantage on its next attack roll before the start of your next turn.`;
     case "vex": return `Vex: Advantage on your next attack roll against ${who} before the end of your next turn.`;
     case "slow": return `Slow: ${who}'s Speed drops 10 ft until the start of your next turn.`;
+    case "topple":
+      if (data.already) return `Topple: ${who} is already Prone.`;
+      if (data.total === undefined) return `Topple: ${who} must make a DC ${data.dc} Constitution save. GM rolls it.`;
+      return data.failed
+        ? `Topple: ${who} failed the DC ${data.dc} Constitution save (${data.total}) and is Prone.`
+        : `Topple: ${who} made the DC ${data.dc} Constitution save (${data.total}).`;
+    case "graze": return `Graze: ${data.damage} ${data.type ?? ""} damage to ${who} on the miss. Apply it from the Graze card.`.replace("  ", " ");
     default: return `${mastery}: applied.`;
   }
 }

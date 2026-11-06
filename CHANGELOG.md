@@ -3,6 +3,14 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.7.0] - 2026-11-06
+### Added
+- Topple: on a hit, the attack card shows the DC (8 + the ability modifier the attack used + Proficiency Bonus) and a GM Roll save button. A failed Constitution save makes the target Prone. Reject removes the Prone it added.
+- Graze: on a miss, a damage card for the attack's ability modifier, in the weapon's damage type, with the normal Apply tray. Nothing when the modifier is 0 or less. Reject deletes the card.
+- Live self-test covers Topple and Graze.
+### Fixed
+- Live self-test waits for the Slow line, not only the effect. It failed when a second GM browser was online.
+
 ## [2.6.0] - 2026-11-06
 ### Added
 - Live self-test for the mastery engine, run by usedtp Logger 1.1.2 or later once per new version: Sap, Vex, Slow, Reject, turn expiry and report context, in a hidden sandbox combat. Skips itself while Automated Masteries 5e is active.

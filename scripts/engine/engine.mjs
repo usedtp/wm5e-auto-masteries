@@ -1,5 +1,5 @@
 import { log } from "../diag.mjs";
-import { TIMING, BUILT, attackOutcome, eligibleMastery, sourceExpires, lineText } from "./rules.mjs";
+import { TIMING, BUILT, attackOutcome, eligibleMastery, sourceExpires, lineText, toppleDC, grazeDamage } from "./rules.mjs";
 
 /*
  * Mastery engine: applies weapon masteries per the 2024 PHB (see SPEC-masteries.md).
@@ -178,12 +178,61 @@ export async function setLineStatus(message, lineId, status) {
   await message.setFlag(MOD, "lines", lines);
 }
 
+export async function updateLine(message, lineId, patch) {
+  const lines = (flag(message, "lines") ?? []).map(l => l.id === lineId ? { ...l, ...patch } : l);
+  await message.setFlag(MOD, "lines", lines);
+}
+
+/** Reverse what a line did: an effect source, a status, a posted card, or a moved token. */
+async function undo(line) {
+  if (line.effectUuid) await removeSource(line.effectUuid, line.id);
+  const u = line.undo;
+  if (u?.type === "status") {
+    const actor = await fromUuid(u.actorUuid);
+    if (actor?.statuses?.has(u.status)) await actor.toggleStatusEffect(u.status, { active: false });
+  } else if (u?.type === "message") {
+    await game.messages.get(u.messageId)?.delete();
+  } else if (u?.type === "move") {
+    const token = await fromUuid(u.tokenUuid);
+    if (token) await token.update({ x: u.x, y: u.y }, { animate: false });
+  }
+}
+
 /** GM Reject: reverse the line's effect, then mark it rejected. */
 export async function rejectLine(message, lineId) {
   const line = (flag(message, "lines") ?? []).find(l => l.id === lineId);
   if (!line || line.status !== "applied") return;
-  if (line.effectUuid) await removeSource(line.effectUuid, line.id);
-  await setLineStatus(message, lineId, "rejected");
+  await undo(line);
+  await updateLine(message, lineId, { status: "rejected", actions: [] });
+}
+
+/** GM-only action buttons on a line (Topple: Roll save). */
+export async function runLineAction(message, lineId, actionId) {
+  const line = (flag(message, "lines") ?? []).find(l => l.id === lineId);
+  if (!line || line.status !== "applied") return null;
+  if (actionId === "rollSave") return rollToppleSave(message, line);
+  log().warn("unknown line action", { messageId: message.id, lineId, actionId });
+  return null;
+}
+
+/** Topple: roll the target's Constitution save against the stored DC. Prone on a failure. */
+async function rollToppleSave(message, line) {
+  const target = await fromUuid(line.save?.targetUuid);
+  if (!target) { log().warn("Topple target is gone", { messageId: message.id }); return null; }
+  const rolls = await target.rollSavingThrow({ ability: "con", target: line.save.dc }, { configure: false }, {});
+  const roll = rolls?.[0];
+  if (!roll) return null;
+  const failed = roll.total < line.save.dc;
+  let undoData = null;
+  if (failed && !target.statuses?.has("prone")) {
+    await target.toggleStatusEffect("prone", { active: true });
+    undoData = { type: "status", actorUuid: target.uuid, status: "prone" };
+  }
+  await updateLine(message, line.id, {
+    text: lineText("topple", { target: target.name, dc: line.save.dc, total: roll.total, failed }),
+    actions: [], undo: undoData
+  });
+  return failed;
 }
 
 /* ---------- Applying masteries ---------- */
@@ -197,6 +246,10 @@ async function applyMastery(mastery, { attackMessage, attacker, target, targetAc
     effect = await addSource(targetActor, "slow", { id, edge: "start", applied: stamp, messageId: attackMessage.id }, { item });
   } else if (mastery === "vex") {
     effect = await addSource(attacker, "vex", { id, edge: "end", applied: stamp, messageId: attackMessage.id }, { item, targetUuid: targetActor.uuid });
+  } else if (mastery === "topple") {
+    return applyTopple({ id, attackMessage, attacker, target, targetActor, stamp });
+  } else if (mastery === "graze") {
+    return applyGraze({ id, attackMessage, attacker, target, targetActor, item, stamp });
   } else return null;
   await addLine(attackMessage, {
     id, mastery, status: "applied", applied: stamp,
@@ -205,6 +258,63 @@ async function applyMastery(mastery, { attackMessage, attacker, target, targetAc
   });
   log().info(`${mastery} applied`, { messageId: attackMessage.id, weapon: item?.name, target: targetActor.name });
   return effect;
+}
+
+/** The ability modifier the attack used (dnd5e records the ability on the attack card). */
+function attackAbilityMod(attackMessage, attacker, item) {
+  const ability = attackMessage.system?.ability
+    ?? item?.system?.activities?.find?.(a => a.type === "attack")?.ability
+    ?? "str";
+  return { ability, mod: attacker.system?.abilities?.[ability]?.mod ?? 0 };
+}
+
+/** Topple: line with the DC and a GM Roll save button. */
+async function applyTopple({ id, attackMessage, attacker, target, targetActor, stamp }) {
+  const name = target?.name ?? targetActor.name;
+  if (targetActor.statuses?.has("prone")) {
+    await addLine(attackMessage, { id, mastery: "topple", status: "applied", applied: stamp, text: lineText("topple", { target: name, already: true }) });
+    return null;
+  }
+  const { mod } = attackAbilityMod(attackMessage, attacker, attackMessage.getAssociatedItem());
+  const dc = toppleDC(mod, attacker.system?.attributes?.prof);
+  await addLine(attackMessage, {
+    id, mastery: "topple", status: "applied", applied: stamp,
+    text: lineText("topple", { target: name, dc }),
+    save: { dc, targetUuid: targetActor.uuid },
+    actions: [{ id: "rollSave", label: `${game.i18n?.localize?.("WM5EAM.lines.rollSave") ?? "Roll save"} (DC ${dc})` }]
+  });
+  ui.notifications?.info(game.i18n?.format?.("WM5EAM.lines.toppleNotice", { target: name, dc }) ?? `Topple: roll ${name}'s DC ${dc} Constitution save on the attack card.`);
+  log().info("topple save pending", { messageId: attackMessage.id, dc, target: name });
+  return null;
+}
+
+/** Graze: post a damage card for the attack's ability modifier, in the weapon's damage type. */
+async function applyGraze({ id, attackMessage, attacker, target, targetActor, item, stamp }) {
+  const { mod } = attackAbilityMod(attackMessage, attacker, item);
+  const amount = grazeDamage(mod);
+  if (!amount) return null;
+  const type = [...(item.system?.damage?.base?.types ?? [])][0] ?? null;
+  const roll = new CONFIG.Dice.DamageRoll(String(amount), {}, { type, properties: [] });
+  await roll.evaluate();
+  const src = attackMessage._source?.system ?? {};
+  const card = await ChatMessage.implementation.create({
+    type: "damage",
+    rolls: [roll],
+    speaker: attackMessage.speaker,
+    flavor: game.i18n?.localize?.("WM5EAM.lines.grazeFlavor") ?? "Graze (weapon mastery)",
+    whisper: attackMessage.whisper ?? [],
+    blind: !!attackMessage.blind,
+    system: { activity: src.activity, item: src.item, origin: src.origin ?? null, targets: src.targets ?? [] },
+    flags: { [MOD]: { extra: "graze", attackId: attackMessage.id } }
+  });
+  const typeLabel = type ? (CONFIG.DND5E?.damageTypes?.[type]?.label ?? type).toLowerCase() : null;
+  await addLine(attackMessage, {
+    id, mastery: "graze", status: "applied", applied: stamp,
+    text: lineText("graze", { target: target?.name ?? targetActor.name, damage: amount, type: typeLabel }),
+    undo: { type: "message", messageId: card?.id }
+  });
+  log().info("graze damage posted", { messageId: attackMessage.id, amount, type });
+  return card;
 }
 
 /** Context shared by attack- and damage-time decisions. Null when nothing should happen. */
@@ -360,6 +470,7 @@ export function renderMasteryUI(message, html) {
       text.textContent = line.text;
       row.append(text);
       if (line.status === "applied" && game.user?.isGM) {
+        for (const a of line.actions ?? []) row.append(button(a.label, `wm5eam-action-${a.id}`, () => runLineAction(message, line.id, a.id)));
         row.append(
           button(loc("approve"), "wm5eam-approve", () => setLineStatus(message, line.id, "approved")),
           button(loc("reject"), "wm5eam-reject", () => rejectLine(message, line.id))

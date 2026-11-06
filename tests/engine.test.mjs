@@ -16,12 +16,20 @@ class Effect {
   async setFlag(m, k, v) { const o = (this.flags[m] ??= {}); const p = k.split("."); let c = o; p.slice(0, -1).forEach(x => c = c[x] ??= {}); c[p.at(-1)] = structuredClone(v); }
   async delete() { this.parent.effects = this.parent.effects.filter(e => e !== this); docs.delete(this.uuid); }
 }
+let saveTotal = 5;
 class Actor {
-  constructor(id, type, name) { this.id = id; this.type = type; this.name = name; this.uuid = `Actor.${id}`; this.effects = []; this.items = []; docs.set(this.uuid, this); }
+  constructor(id, type, name) {
+    this.id = id; this.type = type; this.name = name; this.uuid = `Actor.${id}`; this.effects = []; this.items = []; this.statuses = new Set();
+    this.system = { abilities: { str: { mod: 3 }, dex: { mod: 1 } }, attributes: { prof: 2 } };
+    docs.set(this.uuid, this);
+  }
+  async toggleStatusEffect(id, { active }) { if (active) this.statuses.add(id); else this.statuses.delete(id); }
+  async rollSavingThrow(config) { this.lastSave = config; return [{ total: saveTotal }]; }
   async createEmbeddedDocuments(t, list) { const made = list.map(d => new Effect(this, d)); this.effects.push(...made); return made; }
 }
 class Message {
-  constructor(data) { Object.assign(this, data); this.flags ??= {}; this._source = { system: { activity: { uuid: data.activityUuid ?? "Act.1" } } }; this.timestamp ??= n++; }
+  constructor(data) { Object.assign(this, data); this.flags ??= {}; this._source = { system: { activity: { uuid: data.activityUuid ?? "Act.1" }, origin: "u0", targets: data.system?.targets ?? [] } }; this.timestamp ??= n++; this.whisper ??= []; }
+  async delete() { const i = messages.indexOf(this); if (i >= 0) messages.splice(i, 1); }
   async setFlag(m, k, v) { const o = (this.flags[m] ??= {}); const p = k.split("."); let c = o; p.slice(0, -1).forEach(x => c = c[x] ??= {}); c[p.at(-1)] = structuredClone(v); }
   getAssociatedItem() { return this.item; }
   getAssociatedActor() { return this.actor; }
@@ -32,7 +40,7 @@ class Message {
 const attacker = new Actor("pc1", "character", "Test Fighter");
 const goblin = new Actor("npc1", "npc", "Goblin");
 const ogre = new Actor("npc2", "npc", "Ogre");
-const weapon = mastery => ({ type: "weapon", name: "Test Weapon", uuid: "Item.w1", parent: attacker, system: { mastery } });
+const weapon = mastery => ({ type: "weapon", name: "Test Weapon", uuid: "Item.w1", parent: attacker, system: { mastery, damage: { base: { types: new Set(["slashing"]) } } } });
 
 const combat = {
   id: "c1", started: true, round: 1, turn: 0,
@@ -57,6 +65,8 @@ const logger = {
   async guard(l, fn) { try { return await fn(); } catch (err) { logs.push(["error", l, err]); return undefined; } }
 };
 globalThis.foundry = { utils: { randomID: () => `r${n++}` } };
+globalThis.CONFIG = { Dice: { DamageRoll: class { constructor(f, d, o) { this.formula = f; this.options = o; } async evaluate() { this.total = Number(this.formula); return this; } } }, DND5E: { damageTypes: { slashing: { label: "Slashing" } } } };
+globalThis.ChatMessage = { implementation: { create: async data => { const m = new Message({ id: `g${n++}`, ...data }); messages.push(m); return m; } } };
 globalThis.fromUuid = async u => docs.get(u) ?? null;
 globalThis.ui = { notifications: { warn() {}, info() {}, error() {} } };
 
@@ -206,6 +216,46 @@ const first = E.claim(doc, "x");
 await doc.setFlag(MOD, "claims.x", "other-browser");
 ok(await first === false, "Claim lost to another browser: does nothing");
 ok(await E.claim(doc, "y") === true, "Claim won: acts");
+
+// Topple: hit adds a line with the DC and a Roll save action; a failed save makes the target Prone; Reject removes it
+const t1 = attackMsg("topple", 18, ogre, { system: { mastery: "topple", ability: "str", targets: [target(ogre)] } });
+await E.onAttackCreated(t1);
+const tl = t1.flags[MOD].lines[0];
+ok(tl.mastery === "topple" && tl.save.dc === 13 && tl.actions[0].id === "rollSave", "Topple: DC 8 + 3 Str + 2 PB = 13, GM Roll save action");
+saveTotal = 9;
+await E.runLineAction(t1, tl.id, "rollSave");
+ok(ogre.lastSave.ability === "con" && ogre.lastSave.target === 13, "Topple: Constitution save against the DC");
+ok(ogre.statuses.has("prone") && /failed/.test(t1.flags[MOD].lines[0].text), "Topple: failed save, Prone");
+await E.rejectLine(t1, tl.id);
+ok(!ogre.statuses.has("prone"), "Topple: Reject removes the Prone it added");
+saveTotal = 15;
+const t2 = attackMsg("topple", 18, ogre, { system: { mastery: "topple", ability: "dex", targets: [target(ogre)] } });
+await E.onAttackCreated(t2);
+ok(t2.flags[MOD].lines[0].save.dc === 11, "Topple: DC uses the ability the attack used (Dex +1)");
+await E.runLineAction(t2, t2.flags[MOD].lines[0].id, "rollSave");
+ok(!ogre.statuses.has("prone") && /made/.test(t2.flags[MOD].lines[0].text), "Topple: made save, no Prone");
+ogre.statuses.add("prone");
+const t3 = attackMsg("topple", 18, ogre, { system: { mastery: "topple", ability: "str", targets: [target(ogre)] } });
+await E.onAttackCreated(t3);
+ok(/already Prone/.test(t3.flags[MOD].lines[0].text) && !t3.flags[MOD].lines[0].actions, "Topple: already Prone, no save");
+ogre.statuses.delete("prone");
+
+// Graze: miss posts a damage card for the ability modifier; hit does nothing; Reject deletes the card
+const g1 = attackMsg("graze", 2, ogre, { system: { mastery: "graze", ability: "str", targets: [target(ogre)] } });
+await E.onAttackCreated(g1);
+const card = messages.find(m => m.flags?.[MOD]?.extra === "graze");
+ok(card?.type === "damage" && card.rolls[0].total === 3 && card.rolls[0].options.type === "slashing", "Graze: 3 slashing damage card on a miss");
+ok(/Graze: 3 slashing damage/.test(g1.flags[MOD].lines[0].text), "Graze: line on the attack card");
+await E.rejectLine(g1, g1.flags[MOD].lines[0].id);
+ok(!messages.includes(card), "Graze: Reject deletes the damage card");
+const g2 = attackMsg("graze", 18, ogre, { system: { mastery: "graze", ability: "str", targets: [target(ogre)] } });
+await E.onAttackCreated(g2);
+ok(!g2.flags[MOD]?.lines, "Graze: nothing on a hit");
+attacker.system.abilities.str.mod = 0;
+const g3 = attackMsg("graze", 2, ogre, { system: { mastery: "graze", ability: "str", targets: [target(ogre)] } });
+await E.onAttackCreated(g3);
+ok(!g3.flags[MOD]?.lines, "Graze: nothing when the modifier is 0");
+attacker.system.abilities.str.mod = 3;
 
 // No GM online: the job is skipped and logged to usedtp Logger
 game.user.isActiveGM = false; const gm = game.users.activeGM; game.users.activeGM = null;
