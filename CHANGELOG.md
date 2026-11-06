@@ -3,6 +3,10 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.6.0] - 2026-11-06
+### Added
+- Live self-test for the mastery engine, run by usedtp Logger 1.1.2 or later once per new version: Sap, Vex, Slow, Reject, turn expiry and report context, in a hidden sandbox combat. Skips itself while Automated Masteries 5e is active.
+
 ## [2.5.2] - 2026-11-06
 ### Fixed
 - Error and Unclear reports on weapon cards now record which engine applied masteries and the card's mastery result lines, with their Approve or Reject status.

@@ -43,6 +43,8 @@ Applies weapon masteries exactly as the 2024 Player's Handbook describes. Full r
 
 Built so far: Sap, Vex, Slow. Topple, Graze, Push, Cleave and Nick follow.
 
+Live self-test: with usedtp Logger 1.1.2 or later, the GM's browser plays a short hidden test combat once after each update of this module and reports the result (see usedtp Logger's README).
+
 ## Reporting a mastery problem
 Every weapon attack and damage card ends with "Mastery wrong or unclear?" and two buttons, the same as Roll Lessons:
 - **Error**: a mastery didn't happen, the wrong one was used, or its effect was wrong.
