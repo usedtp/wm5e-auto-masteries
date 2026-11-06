@@ -207,4 +207,10 @@ await doc.setFlag(MOD, "claims.x", "other-browser");
 ok(await first === false, "Claim lost to another browser: does nothing");
 ok(await E.claim(doc, "y") === true, "Claim won: acts");
 
+// No GM online: the job is skipped and logged to usedtp Logger
+game.user.isActiveGM = false; const gm = game.users.activeGM; game.users.activeGM = null;
+await E.runOnGM({ kind: "damage", messageId: "x" });
+ok(logs.some(l => l[0] === "warn" && /no GM online/.test(l[1])), "No GM online: logged to usedtp Logger");
+game.user.isActiveGM = true; game.users.activeGM = gm;
+
 console.log(`engine tests: ${pass} passed`);

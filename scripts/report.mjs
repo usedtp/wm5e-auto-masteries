@@ -1,10 +1,10 @@
 import { log } from "./diag.mjs";
+import { engineActive } from "./engine/engine.mjs";
 
 /*
  * "Error" and "Unclear" buttons under every weapon attack and damage card, matching Roll Lessons.
- * This module does not run at attack time (Automated Masteries 5e applies the effect), so the report records what
- * both modules knew: the weapon's mastery, the mastery used on the attack, whether the character knows it, and
- * whether Automated Masteries 5e acted. Sending, delivery to the GM and the offline queue are handled by usedtp Logger.
+ * The report records the weapon's mastery, the mastery used on the attack, whether the character knows it, which
+ * engine applied masteries (this module's PHB engine, or Automated Masteries 5e), and the result lines on the card. Sending, delivery to the GM and the offline queue are handled by usedtp Logger.
  */
 
 const MOD = "wm5e-auto-masteries";
@@ -42,6 +42,8 @@ export function reportContext(message) {
     actor: actor?.name ?? null,
     actorUuid: actor?.uuid ?? null,
     knowsMastery: baseItem && known ? known.has?.(baseItem) ?? [...known].includes(baseItem) : null,
+    engine: engineActive() ? "wm5e-auto-masteries (PHB)" : "Automated Masteries 5e",
+    lines: (message.flags?.[MOD]?.lines ?? []).map(l => ({ mastery: l.mastery, status: l.status, text: l.text })),
     wm5eActed: !!message.flags?.[WM5E],
     wm5eFlags: message.flags?.[WM5E] ?? null,
     autoTrigger: wm5eSetting,

@@ -3,6 +3,10 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.5.2] - 2026-11-06
+### Fixed
+- Error and Unclear reports on weapon cards now record which engine applied masteries and the card's mastery result lines, with their Approve or Reject status.
+
 ## [2.5.1] - 2026-11-06
 ### Fixed
 - A GM logged in from two browsers no longer applies a mastery twice. One browser claims each decision.

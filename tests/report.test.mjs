@@ -52,10 +52,11 @@ ok(isWeaponRoll(msg("damage", weapon)), "weapon damage card qualifies");
 ok(!isWeaponRoll(msg("attack", spell)), "spell attack does not");
 ok(!isWeaponRoll(msg("save", weapon)), "save card does not");
 
-const ctx = reportContext(msg("attack", weapon, { flags: { wm5e: { applied: "sap" } } }));
+const ctx = reportContext(msg("attack", weapon, { flags: { wm5e: { applied: "sap" }, "wm5e-auto-masteries": { lines: [{ id: "l1", mastery: "sap", status: "rejected", text: "Sap: line" }] } } }));
 ok(ctx.weapon === "Longsword" && ctx.weaponMastery === "sap" && ctx.baseItem === "longsword", "context has weapon, mastery, base item");
 ok(ctx.knowsMastery === true && ctx.attackMastery === "sap", "context has known mastery and attack mastery");
 ok(ctx.wm5eActed === true && ctx.autoTrigger === true && ctx.targets === 1, "context has wm5e state, auto-trigger, targets");
+ok(ctx.lines[0].mastery === "sap" && ctx.lines[0].status === "rejected" && typeof ctx.engine === "string", "context has the engine and its result lines");
 
 // Bar is added once, with prompt, Error and Unclear.
 const html = new El("li"); const content = new El("div"); content.className = "message-content"; html.append(content);
