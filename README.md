@@ -31,6 +31,18 @@ Run once as a Script macro to fix actors and items that existed before install:
 await game.modules.get("wm5e-auto-masteries").api.sweep()
 ```
 
+## Weapon mastery automation (2024 PHB)
+Applies weapon masteries exactly as the 2024 Player's Handbook describes. Full rules: `SPEC-masteries.md`.
+
+- **Turn off Automated Masteries 5e** (Manage Modules). While it is active, this automation stays idle and the GM sees a notice.
+- **Combat only.** Masteries apply only while the attacker is in a started combat. The PHB has no such limit; it is a Foundry rule here.
+- **Characters only.** dnd5e records a mastery on the attack only when the character knows it. NPCs use masteries only under the house rule.
+- **One target per attack.** Attacks with several targets get no mastery and are logged as unclear.
+- **Result lines.** Each mastery adds a line to the attack card. The GM sees Approve and Reject. Reject reverses it. At the start of the attacker's next turn, open lines count as approved.
+- **Apply weapon mastery.** Slow and Vex apply when damage is applied with Apply Damage. If HP was changed by hand, the GM presses Apply weapon mastery on the damage card.
+
+Built so far: Sap, Vex, Slow. Topple, Graze, Push, Cleave and Nick follow.
+
 ## Reporting a mastery problem
 Every weapon attack and damage card ends with "Mastery wrong or unclear?" and two buttons, the same as Roll Lessons:
 - **Error**: a mastery didn't happen, the wrong one was used, or its effect was wrong.
@@ -64,6 +76,8 @@ await game.modules.get("wm5e-auto-masteries").api.undoRepair()            // res
 | Fill missing base items from weapon name | On |
 | Warn the GM about characters over their mastery limit | On |
 | Error and Unclear buttons on weapon cards | On |
+| Allow house rules (homebrew) | Off |
+| House rule: NPCs use weapon masteries | Off (PHB) |
 
 ## Macros
 `macros/` holds GM tools: `wm5e-qa.js` (in-world QA suite, sandboxed), `wm5e-mastery-audit.js` (read-only audit report), `cleave-check.js` (explains why Cleave finds no second target).

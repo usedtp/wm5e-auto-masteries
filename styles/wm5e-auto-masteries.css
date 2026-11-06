@@ -39,3 +39,50 @@
   font-size: var(--font-size-12, 12px);
   opacity: 0.8;
 }
+
+/* Mastery result lines on attack cards. */
+.wm5eam-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.25rem 0.5rem;
+  border-top: 1px solid var(--color-border-light-tertiary, #8883);
+  font-size: var(--font-size-12, 12px);
+}
+
+.wm5eam-line {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.wm5eam-line-text {
+  flex: 1;
+}
+
+.wm5eam-line button,
+.wm5eam-apply button {
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.4;
+  font-size: var(--font-size-11, 11px);
+}
+
+.wm5eam-line-status {
+  opacity: 0.75;
+  font-size: var(--font-size-11, 11px);
+}
+
+.wm5eam-rejected .wm5eam-line-text {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.wm5eam-apply {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0.5rem;
+}

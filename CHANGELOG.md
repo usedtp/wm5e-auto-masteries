@@ -3,6 +3,13 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.5.0] - 2026-11-06
+### Added
+- Weapon mastery automation per the 2024 PHB: Sap, Vex, Slow. Idle while Automated Masteries 5e is active.
+- Result line on the attack card for each mastery, with GM Approve and Reject. Reject reverses the effect.
+- Apply weapon mastery button on damage cards for the GM, for HP changed by hand.
+- Settings: Allow house rules (homebrew); House rule: NPCs use weapon masteries.
+
 ## [2.4.0] - 2026-11-06
 ### Added
 - Error and Unclear buttons under every weapon attack and damage card, matching Roll Lessons. Reports go to usedtp Logger with the weapon, mastery, base item, mastery used, whether the character knows it, and whether Automated Masteries 5e acted.

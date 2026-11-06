@@ -136,8 +136,8 @@ game.actors = realActors;
 // No console calls outside diag.mjs
 const stray = [];
 for (const dir of ["scripts", "macros"]) {
-  for (const f of fs.readdirSync(new URL(`../${dir}/`, import.meta.url))) {
-    if (f === "diag.mjs") continue;
+  for (const f of fs.readdirSync(new URL(`../${dir}/`, import.meta.url), { recursive: true })) {
+    if (f.endsWith("diag.mjs") || !/\.m?js$/.test(f)) continue;
     const text = fs.readFileSync(new URL(`../${dir}/${f}`, import.meta.url), "utf8");
     if (/console\./.test(text)) stray.push(`${dir}/${f}`);
   }

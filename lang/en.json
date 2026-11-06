@@ -32,5 +32,18 @@
   "WM5EAM.report.send": "Send report",
   "WM5EAM.report.sent": "Report sent to the GM.",
   "WM5EAM.report.logged": "Report saved in the log.",
-  "WM5EAM.report.queued": "No GM is online. Your report is saved in this browser and will be sent when a GM connects."
+  "WM5EAM.report.queued": "No GM is online. Your report is saved in this browser and will be sent when a GM connects.",
+  "WM5EAM.homebrew.name": "Allow house rules (homebrew)",
+  "WM5EAM.homebrew.hint": "Off: weapon masteries follow the 2024 Player's Handbook exactly, and the house-rule settings below are ignored.",
+  "WM5EAM.npcMasteries.name": "House rule: NPCs use weapon masteries",
+  "WM5EAM.npcMasteries.hint": "PHB: only characters with a feature such as Weapon Mastery use masteries. Needs 'Allow house rules'.",
+  "WM5EAM.npcMasteries.off": "Off (PHB)",
+  "WM5EAM.npcMasteries.feature": "NPCs with a Weapon Mastery feature",
+  "WM5EAM.npcMasteries.all": "All NPCs",
+  "WM5EAM.lines.approve": "Approve",
+  "WM5EAM.lines.reject": "Reject",
+  "WM5EAM.lines.approved": "Approved",
+  "WM5EAM.lines.rejected": "Rejected",
+  "WM5EAM.lines.applyMastery": "Apply weapon mastery",
+  "WM5EAM.engine.otherActive": "WM5E Auto Masteries: weapon masteries follow the 2024 PHB only when Automated Masteries 5e is off. Turn it off in Manage Modules. Until then, Automated Masteries 5e applies them."
 }

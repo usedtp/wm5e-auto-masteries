@@ -1,12 +1,14 @@
-// WM5E Auto Masteries 2.4.0 for dnd5e 6.0.x on Foundry v14.
+// WM5E Auto Masteries 2.5.0 for dnd5e 6.0.x on Foundry v14.
 // 2.2.0: never grants masteries; caps follow the 2024 PHB; repair/undo for over-cap characters.
 // 2.3.0: diagnostics go through usedtp Logger (scripts/diag.mjs).
 // 2.4.0: Error and Unclear buttons on weapon attack and damage cards (scripts/report.mjs).
-// Design for low load: no compendium document loads, one light chat render hook,
+// 2.5.0: mastery engine per the 2024 PHB (scripts/engine/): Sap, Vex, Slow; GM Approve/Reject lines.
+// Design for low load: no compendium document loads, light chat and combat hooks,
 // changes applied in preCreate hooks (no second write), writes only on real diffs.
 
 import { log } from "./diag.mjs";
 import { onRenderChatMessage } from "./report.mjs";
+import * as engine from "./engine/engine.mjs";
 
 const MOD = "wm5e-auto-masteries";
 const PACK = "dnd5e.content24";
@@ -341,10 +343,32 @@ Hooks.once("init", () => {
   });
 });
 
-// Error and Unclear buttons on weapon attack and damage cards. A failure here never breaks the chat card.
+// Mastery lines and Error/Unclear buttons on weapon cards. A failure here never breaks the chat card.
 Hooks.on("renderChatMessageHTML", (message, html) => {
+  try { engine.renderMasteryUI(message, html); } catch (err) { log().error("mastery lines failed", err, { messageId: message?.id }); }
   try { onRenderChatMessage(message, html); } catch (err) { log().error("report buttons failed", err, { messageId: message?.id }); }
 });
+
+// Mastery engine (2024 PHB). Idle while Automated Masteries 5e is active. See SPEC-masteries.md.
+Hooks.once("init", () => {
+  engine.registerEngineSettings();
+  (CONFIG.queries ??= {})[engine.QUERY] = data => log().guard("mastery query", () => engine.handle(data), { job: data });
+});
+Hooks.once("ready", () => log().guard("mastery engine check", () => engine.warnIfOtherEngine()));
+Hooks.on("createChatMessage", message => {
+  if (message?.type !== "attack") return;
+  return log().guard("mastery on attack", () => engine.onAttackCreated(message), { messageId: message.id });
+});
+// Must stay synchronous: it changes the roll config before the roll.
+Hooks.on("dnd5e.preRollAttackV2", config => {
+  try { engine.onPreRollAttack(config); } catch (err) { log().error("mastery advantage check", err, { actor: config?.subject?.actor?.name ?? null }); }
+});
+Hooks.on("dnd5e.rollAttackV2", (rolls, data) => log().guard("mastery after attack", () => engine.onRolledAttack(rolls, data), { actor: data?.subject?.actor?.name ?? null }));
+Hooks.on("dnd5e.applyDamage", (actor, amount, options) => {
+  if (!(amount > 0) || !options?.origin?.id || !engine.engineActive()) return;
+  return log().guard("mastery on damage", () => engine.runOnGM({ kind: "damage", messageId: options.origin.id, targetUuid: actor.uuid }), { messageId: options.origin.id, target: actor.name });
+});
+Hooks.on("combatTurnChange", (combat, prior, current) => log().guard("mastery turn change", () => engine.onTurnChange(combat, prior, current), { combatId: combat?.id }));
 
 Hooks.once("ready", () => {
   for (const key of ["desc", "infer", "warn"]) cfg[key] = game.settings.get(MOD, key);
