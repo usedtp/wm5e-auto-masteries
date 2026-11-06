@@ -138,14 +138,16 @@ export async function masterySuite(t) {
   });
 
   await t.step("Graze: a miss posts a damage card equal to the Str modifier; Reject deletes it", async () => {
-    await goblin.update({ "system.attributes.ac.flat": 30 });
+    // dnd5e 6 recalculates NPC AC from the whole object; a flat-only update is ignored.
+    await goblin.update({ "system.attributes.ac": { calc: "flat", flat: 30 } });
+    await t.waitFor(() => goblin.system.attributes.ac.value === 30, { message: "goblin AC 30" });
     const card = await attack(fighter, "Greatsword", goblinTok);
     const l = await t.waitFor(() => line(card, "graze"), { message: "Graze line" });
     const graze = await t.waitFor(() => game.messages.contents.find(m => m.flags?.[MOD]?.extra === "graze" && m.flags[MOD].attackId === card.id), { message: "Graze damage card" });
     t.equal(graze.rolls[0].total, fighter.system.abilities.str.mod, "Graze damage");
     await press(card, "wm5eam-reject", () => rejectLine(card, l.id));
     await t.waitFor(() => !game.messages.get(graze.id), { message: "Graze card deleted" });
-    await goblin.update({ "system.attributes.ac.flat": 5 });
+    await goblin.update({ "system.attributes.ac": { calc: "flat", flat: 5 } });
   });
 
   await t.step("Report: Error/Unclear context carries the engine and its lines", async () => {

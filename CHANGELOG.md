@@ -3,6 +3,10 @@
 All notable changes to WM5E Auto Masteries. Versions follow [Semantic Versioning](https://semver.org):
 MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+## [2.7.1] - 2026-11-06
+### Fixed
+- Live self-test: the Graze step now sets the test goblin's AC as a whole object. dnd5e 6 ignored the flat-only update, so the miss never happened.
+
 ## [2.7.0] - 2026-11-06
 ### Added
 - Topple: on a hit, the attack card shows the DC (8 + the ability modifier the attack used + Proficiency Bonus) and a GM Roll save button. A failed Constitution save makes the target Prone. Reject removes the Prone it added.
